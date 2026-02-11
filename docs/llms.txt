@@ -1,4 +1,4 @@
-# DPMirt ![](reference/figures/logo.png)
+# DPMirt
 
 **Bayesian Semiparametric Item Response Theory Models Using Dirichlet
 Process Mixture Priors**

@@ -1,0 +1,175 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 181.4 209.5" width="181.4" height="209.5">
+  <defs>
+    <!-- Hex background gradient (matching DPprior blue family) -->
+    <linearGradient id="hexGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a5276"/>
+      <stop offset="100%" style="stop-color:#2980b9"/>
+    </linearGradient>
+    <!-- Warm accent gradient for ICC curves -->
+    <linearGradient id="iccGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#f39c12"/>
+      <stop offset="100%" style="stop-color:#e67e22"/>
+    </linearGradient>
+    <!-- Glow filter for density -->
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="1.5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <!-- Soft shadow for depth -->
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="#000" flood-opacity="0.2"/>
+    </filter>
+  </defs>
+
+  <!-- Hexagon shape -->
+  <polygon
+    points="90.7,1 181.4,53.4 181.4,156.1 90.7,208.5 0,156.1 0,53.4"
+    fill="url(#hexGrad)"
+    stroke="#154360"
+    stroke-width="2"/>
+
+  <!-- Inner decorative border -->
+  <polygon
+    points="90.7,10 172,57 172,152.5 90.7,199.5 9.4,152.5 9.4,57"
+    fill="none"
+    stroke="#5dade2"
+    stroke-width="0.5"
+    opacity="0.4"/>
+
+  <!-- ============================================ -->
+  <!-- Bimodal DPM density (the semiparametric      -->
+  <!-- latent trait distribution — core of DPMirt)   -->
+  <!-- ============================================ -->
+  <!-- Filled density area -->
+  <path
+    d="M 28,138
+       C 32,138 36,136 40,132
+       C 44,128 48,118 54,110
+       C 58,104 62,100 66,98
+       C 70,96 74,97 78,100
+       C 82,103 84,108 86,112
+       C 88,116 89,118 90.7,119
+       C 92.4,118 94,116 96,112
+       C 98,108 100,103 104,100
+       C 108,97 112,96 116,98
+       C 120,100 124,104 128,110
+       C 134,118 138,128 142,132
+       C 146,136 150,138 154,138"
+    fill="#5dade2"
+    fill-opacity="0.15"
+    stroke="none"/>
+  <!-- Close the fill to baseline -->
+  <path
+    d="M 28,138
+       C 32,138 36,136 40,132
+       C 44,128 48,118 54,110
+       C 58,104 62,100 66,98
+       C 70,96 74,97 78,100
+       C 82,103 84,108 86,112
+       C 88,116 89,118 90.7,119
+       C 92.4,118 94,116 96,112
+       C 98,108 100,103 104,100
+       C 108,97 112,96 116,98
+       C 120,100 124,104 128,110
+       C 134,118 138,128 142,132
+       C 146,136 150,138 154,138"
+    fill="none"
+    stroke="#5dade2"
+    stroke-width="1.8"
+    opacity="0.7"
+    filter="url(#glow)"/>
+
+  <!-- Normal reference curve (dashed, subtle) -->
+  <path
+    d="M 30,138
+       C 42,137 54,134 66,126
+       C 74,121 82,114 90.7,110
+       C 99,114 107,121 116,126
+       C 128,134 140,137 152,138"
+    fill="none"
+    stroke="#ecf0f1"
+    stroke-width="0.8"
+    stroke-dasharray="3,3"
+    opacity="0.35"/>
+
+  <!-- ============================================ -->
+  <!-- Three ICC curves (representing items —        -->
+  <!-- the IRT component of DPMirt)                  -->
+  <!-- ============================================ -->
+  <!-- ICC curve 1 (easy item, shifted left) -->
+  <path
+    d="M 30,125 C 40,124 50,122 58,116 C 66,108 70,96 74,86 C 78,78 82,72 90.7,70"
+    fill="none"
+    stroke="#f39c12"
+    stroke-width="1.6"
+    stroke-linecap="round"
+    opacity="0.85"/>
+
+  <!-- ICC curve 2 (medium item, centered) -->
+  <path
+    d="M 38,128 C 50,127 62,124 72,118 C 80,112 86,102 90.7,92 C 96,82 102,74 110,68 C 118,64 130,62 142,61"
+    fill="none"
+    stroke="#f5b041"
+    stroke-width="1.6"
+    stroke-linecap="round"
+    opacity="0.85"/>
+
+  <!-- ICC curve 3 (hard item, shifted right) -->
+  <path
+    d="M 90.7,125 C 100,124 108,120 114,112 C 120,104 126,92 132,82 C 136,76 142,72 152,70"
+    fill="none"
+    stroke="#eb984e"
+    stroke-width="1.6"
+    stroke-linecap="round"
+    opacity="0.85"/>
+
+  <!-- ============================================ -->
+  <!-- Person dots on density (cluster assignments)  -->
+  <!-- ============================================ -->
+  <!-- Left cluster -->
+  <circle cx="52" cy="112" r="2.2" fill="#ecf0f1" opacity="0.8"/>
+  <circle cx="60" cy="102" r="2.2" fill="#ecf0f1" opacity="0.8"/>
+  <circle cx="68" cy="97" r="2.2" fill="#ecf0f1" opacity="0.8"/>
+  <circle cx="76" cy="99" r="2.2" fill="#ecf0f1" opacity="0.8"/>
+
+  <!-- Right cluster -->
+  <circle cx="106" cy="99" r="2.2" fill="#ecf0f1" opacity="0.8"/>
+  <circle cx="114" cy="97" r="2.2" fill="#ecf0f1" opacity="0.8"/>
+  <circle cx="122" cy="102" r="2.2" fill="#ecf0f1" opacity="0.8"/>
+  <circle cx="130" cy="112" r="2.2" fill="#ecf0f1" opacity="0.8"/>
+
+  <!-- ============================================ -->
+  <!-- Greek theta (θ) — the latent trait            -->
+  <!-- ============================================ -->
+  <text
+    x="156" y="68"
+    font-family="Georgia, 'Times New Roman', serif"
+    font-style="italic"
+    font-size="16"
+    fill="#f7dc6f"
+    opacity="0.85">θ</text>
+
+  <!-- ============================================ -->
+  <!-- Package name                                  -->
+  <!-- ============================================ -->
+  <text
+    x="90.7" y="162"
+    font-family="Helvetica, Arial, sans-serif"
+    font-weight="bold"
+    font-size="22"
+    fill="#ecf0f1"
+    text-anchor="middle"
+    filter="url(#shadow)">DPMirt</text>
+
+  <!-- Subtitle -->
+  <text
+    x="90.7" y="178"
+    font-family="Helvetica, Arial, sans-serif"
+    font-size="7.5"
+    fill="#aed6f1"
+    text-anchor="middle"
+    opacity="0.9">Semiparametric IRT via DPM</text>
+</svg>
