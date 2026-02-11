@@ -1,0 +1,797 @@
+---
+title: "The Complete Guide to Models and Workflows"
+author: "JoonHo Lee"
+date: "`r Sys.Date()`"
+description: >
+  A comprehensive guide to every model, prior, parameterization, and
+  identification strategy available in DPMirt.  Covers both the one-step
+  dpmirt() wrapper and the step-by-step pipeline, with practical advice
+  on when to use each workflow.
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{The Complete Guide to Models and Workflows}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+library(DPMirt)
+library(ggplot2)
+knitr::opts_chunk$set(
+  collapse    = TRUE,
+  comment     = "#>",
+  fig.width   = 7,
+  fig.height  = 5,
+  fig.align   = "center",
+  out.width   = "85%"
+)
+set.seed(42)
+
+# DPMirt palette
+pal <- list(
+  parametric     = "#56B4E9",
+  semiparametric = "#E69F00",
+  reference      = "gray50",
+  accent         = "#009E73",
+  warn           = "#D55E00"
+)
+
+# Helper: find extdata files in installed package OR source tree
+find_extdata <- function(filename) {
+  path <- system.file("extdata", filename, package = "DPMirt")
+  if (nzchar(path) && file.exists(path)) return(path)
+  path2 <- file.path("..", "inst", "extdata", filename)
+  if (file.exists(path2)) return(path2)
+  ""
+}
+
+# Guard: pre-computed MCMC results must exist for eval'd chunks
+has_data <- nzchar(find_extdata("vignette_fit_rasch_normal.rds")) &&
+  nzchar(find_extdata("vignette_fit_rasch_dpm.rds"))
+
+has_2pl <- nzchar(find_extdata("vignette_fit_2pl_dpm.rds"))
+
+has_compare <- has_data
+
+has_bimodal <- nzchar(find_extdata("vignette_sim_bimodal.rds")) &&
+  nzchar(find_extdata("vignette_fit_rasch_normal_bimodal.rds")) &&
+  nzchar(find_extdata("vignette_fit_rasch_dpm_bimodal.rds"))
+```
+
+## 1. Overview
+
+DPMirt provides two ways to fit Bayesian IRT models.
+
+**One-step workflow.**
+Call `dpmirt()` and get a fully processed `dpmirt_fit` object in one
+function call.
+Best for standard analyses where the defaults are appropriate.
+
+**Step-by-step workflow.**
+Walk through the pipeline explicitly:
+`dpmirt_spec()` $\rightarrow$ `dpmirt_compile()` $\rightarrow$
+`dpmirt_sample()` $\rightarrow$ `dpmirt_rescale()` $\rightarrow$
+`dpmirt_estimates()`.
+Best when you need to inspect intermediate objects, run multiple chains
+from a single compiled model (compile-once, sample-many), or modify the
+MCMC configuration before sampling.
+
+Both workflows produce the same statistical results.
+
+
+## 2. The One-Step Workflow
+
+### 2.1 Key Arguments
+
+```{r arg-table, echo = FALSE}
+arg_tbl <- data.frame(
+  Argument    = c("data", "model", "prior", "parameterization",
+                   "identification", "niter", "nburnin", "thin",
+                   "thin2", "nchains", "seed", "alpha_prior",
+                   "base_measure", "M", "rescale",
+                   "compute_waic", "save_draws"),
+  Default     = c("---", '"rasch"', '"normal"', '"irt"',
+                   "NULL", "10000", "2000", "1",
+                   "NULL", "1", "NULL", "NULL",
+                   "list(s2_mu=2, ...)", "50", "TRUE",
+                   "TRUE", "TRUE"),
+  Description = c(
+    "N x I binary response matrix (persons in rows, items in columns)",
+    'IRT model: "rasch", "2pl", or "3pl"',
+    'Latent trait prior: "normal" or "dpm"',
+    '"irt" or "si" (slope-intercept; 2PL/3PL only)',
+    "Identification strategy; NULL selects model default",
+    "Total MCMC iterations",
+    "Burn-in iterations to discard",
+    "Thinning interval for item parameters",
+    "Thinning for theta (NULL = same as thin)",
+    "Number of independent chains",
+    "Random seed for reproducibility",
+    "DPM concentration hyperprior: NULL, c(a,b), or DPprior object",
+    "DPM base measure hyperparameters (Paganin defaults)",
+    "CRP truncation level (max clusters)",
+    "Apply post-hoc identification rescaling",
+    "Compute WAIC for model comparison",
+    "Store full theta posterior (needed for CB/GR estimators)"
+  ),
+  stringsAsFactors = FALSE
+)
+knitr::kable(arg_tbl, align = c("l", "l", "l"))
+```
+
+### 2.2 Examples
+
+Each call below takes roughly 1--3 minutes (dominated by NIMBLE
+compilation on first use).  We show the code and load pre-computed
+results.
+
+**Rasch -- Normal prior**
+
+```r
+fit_rasch_n <- dpmirt(
+  sim$response, model = "rasch", prior = "normal",
+  niter = 10000, nburnin = 2000, seed = 100
+)
+```
+
+```{r load-rasch-normal, eval = has_data}
+fit_rasch_n <- readRDS(find_extdata("vignette_fit_rasch_normal.rds"))
+```
+
+**Rasch -- DPM prior**
+
+```r
+fit_rasch_dpm <- dpmirt(
+  sim$response, model = "rasch", prior = "dpm",
+  niter = 10000, nburnin = 2000, seed = 200
+)
+```
+
+```{r load-rasch-dpm, eval = has_data}
+fit_rasch_dpm <- readRDS(find_extdata("vignette_fit_rasch_dpm.rds"))
+```
+
+**2PL -- DPM prior**
+
+```r
+fit_2pl <- dpmirt(
+  sim$response, model = "2pl", prior = "dpm",
+  niter = 15000, nburnin = 5000, seed = 300
+)
+```
+
+```{r load-2pl-dpm, eval = has_2pl}
+fit_2pl <- readRDS(find_extdata("vignette_fit_2pl_dpm.rds"))
+```
+
+The returned `dpmirt_fit` object gives a compact overview when printed,
+and `summary()` adds item-level estimates and DPM cluster diagnostics:
+
+```{r print-fit, eval = has_data}
+fit_rasch_n
+```
+
+```{r summary-fit, eval = has_data}
+summary(fit_rasch_dpm)
+```
+
+
+## 3. The Step-by-Step Workflow
+
+### 3.1 Specification
+
+`dpmirt_spec()` translates your model request into a complete NIMBLE
+specification: programmatically generated model code, constants, data,
+initial values, and monitor lists.
+
+```r
+spec <- dpmirt_spec(
+  data = sim$response, model = "rasch",
+  prior = "dpm", identification = "constrained_item"
+)
+```
+
+Inspect the returned `dpmirt_spec` object:
+
+```r
+spec$code       # nimbleCode object
+str(spec$constants)
+spec$monitors   # beta, alpha, zi, muTilde, s2Tilde, logprob nodes
+spec$monitors2  # eta (thinned separately via thin2)
+```
+
+Because the spec is pure R data (no C++ pointers), it can be safely
+saved to disk with `saveRDS()` and loaded in a new session.
+
+### 3.2 Compilation
+
+`dpmirt_compile()` feeds the spec into NIMBLE's compiler, producing
+C++ objects that run the sampler at native speed.
+
+```r
+compiled <- dpmirt_compile(spec)
+```
+
+> **Timing warning.**
+> Compilation typically takes 30--120 seconds.
+> It only needs to be done **once** per model specification.
+
+> **Session-bound caveat.**
+> The compiled object contains external C++ pointers and **cannot** be
+> serialized with `saveRDS()`.
+> If you restart R, re-run `dpmirt_compile()` on the saved spec.
+
+### 3.3 Sampling
+
+`dpmirt_sample()` runs MCMC on the compiled model.
+Because compilation is already done, this step is fast and repeatable.
+
+```r
+samples <- dpmirt_sample(
+  compiled, niter = 10000, nburnin = 2000,
+  thin = 1, thin2 = 1, seed = 42
+)
+```
+
+**Compile-once, sample-many.**
+Draw multiple independent chains from the same compiled model without
+paying the compilation cost each time:
+
+```r
+chains <- lapply(1:4, function(i) {
+  dpmirt_sample(compiled, niter = 10000, nburnin = 2000, seed = i)
+})
+```
+
+For convenience, `dpmirt()` also supports multi-chain runs directly
+via the `nchains` argument.
+
+### 3.4 Rescaling
+
+`dpmirt_rescale()` applies post-hoc identification rescaling to the
+raw posterior samples and returns a `dpmirt_fit` object that can be
+passed directly to `dpmirt_estimates()`, `dpmirt_resume()`, and other
+downstream functions.
+
+```{r rescale-table, echo = FALSE}
+rescale_tbl <- data.frame(
+  Model     = c("Rasch", "2PL/3PL (IRT)", "2PL/3PL (SI)"),
+  Indeterminacy = c("Location only", "Location + scale",
+                     "Location + scale"),
+  Rescaling = c(
+    "Center beta at 0; shift theta accordingly",
+    "Center beta, normalize lambda to geom-mean 1, rescale theta",
+    "Center gamma via weighted sum, normalize lambda, rescale theta"
+  ),
+  stringsAsFactors = FALSE
+)
+knitr::kable(rescale_tbl, align = c("l", "l", "l"))
+```
+
+For the Rasch model:
+
+$$
+\beta_i^* = \beta_i - \bar{\beta}, \qquad
+\theta_j^* = \theta_j - \bar{\beta}
+$$
+
+For 2PL/3PL (IRT parameterization):
+
+$$
+s = \left(\prod_{i=1}^{I} \lambda_i\right)^{-1/I}, \quad
+\beta_i^* = \frac{\beta_i - \bar{\beta}}{s}, \quad
+\lambda_i^* = \lambda_i \cdot s, \quad
+\theta_j^* = \frac{\theta_j - \bar{\beta}}{s}
+$$
+
+```r
+fit <- dpmirt_rescale(samples)
+
+# fit is a dpmirt_fit: pass directly to estimates or resume
+est <- dpmirt_estimates(fit)
+```
+
+> If the model uses `"constrained_item"` or `"constrained_ability"`
+> identification, rescaling is a no-op --- parameters are already
+> identified through in-model constraints.
+
+### 3.5 Estimates
+
+`dpmirt_estimates()` computes person and item point estimates using
+three posterior summary methods.
+
+```{r estimator-table, echo = FALSE}
+est_tbl <- data.frame(
+  Method   = c("PM", "CB", "GR"),
+  Name     = c("Posterior Mean",
+               "Constrained Bayes (Ghosh, 1992)",
+               "Triple-Goal (Shen & Louis, 1998)"),
+  Optimizes = c("Individual MSE (Goal 1)",
+                "EDF estimation (Goal 3)",
+                "Ranking + EDF (Goals 2 & 3)"),
+  stringsAsFactors = FALSE
+)
+knitr::kable(est_tbl, align = c("l", "l", "l"))
+```
+
+```{r estimates-demo, eval = has_data}
+est <- dpmirt_estimates(fit_rasch_dpm, methods = c("pm", "cb", "gr"))
+head(est$theta, 8)
+```
+
+```{r item-est-demo, eval = has_data}
+head(est$beta, 8)
+```
+
+
+## 4. Model Specifications
+
+All models use a logistic link for
+$\pi_{ij} = P(Y_{ij} = 1 \mid \theta_j, \text{item}_i)$.
+
+### 4.1 Rasch Model
+
+$$
+\text{logit}(\pi_{ij}) = \theta_j - \beta_i
+$$
+
+The Rasch model has a single item parameter --- difficulty $\beta_i$.
+The response probability depends only on the difference between person
+ability and item difficulty.
+
+**Identification.**
+Location indeterminacy only (adding a constant $c$ to all $\theta$ and
+$\beta$ leaves the likelihood unchanged).
+Default: `"constrained_item"` (mean-centers $\beta$ during MCMC).
+
+**When to use.**
+Most parsimonious IRT model.
+Assumes equal discrimination and no guessing.
+Stable item estimates even with modest sample sizes.
+
+```r
+fit_rasch <- dpmirt(data, model = "rasch", prior = "normal")
+```
+
+### 4.2 Two-Parameter Logistic (2PL)
+
+Adds a discrimination parameter $\lambda_i$.
+Two equivalent parameterizations are available.
+
+**IRT parameterization:**
+$$\text{logit}(\pi_{ij}) = \lambda_i(\theta_j - \beta_i)$$
+
+**Slope--intercept (SI) parameterization:**
+$$\text{logit}(\pi_{ij}) = \lambda_i \theta_j + \gamma_i$$
+
+where $\gamma_i = -\lambda_i \beta_i$ is an intercept.
+
+```{r param-comparison, echo = FALSE}
+param_tbl <- data.frame(
+  Feature        = c("Formula", "Item location", "Interpretation",
+                      "Posterior correlation", "Centered sampler",
+                      "Default identification"),
+  IRT            = c("$\\lambda_i(\\theta_j - \\beta_i)$",
+                      "$\\beta_i$ (difficulty)",
+                      "$\\beta_i$ on theta scale",
+                      "Higher ($\\lambda$--$\\beta$)",
+                      "Not applicable",
+                      "unconstrained"),
+  SI             = c("$\\lambda_i \\theta_j + \\gamma_i$",
+                      "$\\gamma_i$ (intercept)",
+                      "Baseline log-odds at $\\theta = 0$",
+                      "Lower ($\\lambda$--$\\gamma$)",
+                      "Auto-enabled",
+                      "unconstrained"),
+  stringsAsFactors = FALSE
+)
+knitr::kable(param_tbl, align = c("l", "l", "l"))
+```
+
+The SI parameterization reduces posterior correlations between
+discrimination and intercept, improving MCMC mixing.
+DPMirt automatically enables a centered sampler for SI (Paganin et al.,
+2023).
+
+**Identification.**
+Both location and scale indeterminacy.
+Default: `"unconstrained"` + post-hoc rescaling.
+
+```r
+fit_2pl_irt <- dpmirt(data, model = "2pl", prior = "dpm")
+fit_2pl_si  <- dpmirt(data, model = "2pl", prior = "dpm",
+                       parameterization = "si")
+```
+
+### 4.3 Three-Parameter Logistic (3PL)
+
+Adds a lower-asymptote (guessing) parameter $\delta_i \in (0, 1)$:
+
+$$
+\pi_{ij} = \delta_i + (1 - \delta_i)\,\text{logistic}\!\big(\lambda_i(\theta_j - \beta_i)\big)
+$$
+
+DPMirt places a $\text{Beta}(4, 12)$ prior on each $\delta_i$
+(prior mean $\approx 0.25$, concentrating mass in 0.1--0.4).
+
+**Practical recommendations:**
+
+- Use longer chains (20,000+ iterations, 5,000+ burn-in).
+- Most appropriate for multiple-choice items with genuine guessing.
+- Both IRT and SI parameterizations are supported.
+
+```r
+fit_3pl <- dpmirt(
+  data, model = "3pl", prior = "dpm",
+  niter = 20000, nburnin = 5000, seed = 400
+)
+```
+
+
+## 5. Priors: Parametric vs Semiparametric
+
+### 5.1 Normal (Parametric) Prior
+
+$$
+\theta_j \sim N(\mu, \sigma^2), \qquad
+\mu \sim N(0, 3), \qquad
+\sigma^2 \sim \text{Inv-Gamma}(2.01, 1.01)
+$$
+
+Standard assumption in most IRT software.  Works well when the ability
+distribution is approximately unimodal and symmetric.
+
+### 5.2 DPM (Semiparametric) Prior
+
+The DPM prior uses the Chinese Restaurant Process (CRP) representation:
+
+$$
+z_j \mid \alpha \sim \text{CRP}(\alpha), \qquad
+\theta_j \mid z_j \sim N\!\big(\tilde{\mu}_{z_j},\; \tilde{\sigma}^2_{z_j}\big)
+$$
+
+Each cluster $m$ draws from the base measure $G_0$:
+
+$$
+\tilde{\mu}_m \sim N(0, \sigma^2_\mu), \qquad
+\tilde{\sigma}^2_m \sim \text{Inv-Gamma}(\nu_1, \nu_2)
+$$
+
+The concentration parameter $\alpha$ controls the expected number of
+clusters.
+
+### 5.3 Hyperparameter Defaults
+
+```{r hyper-table, echo = FALSE}
+hyper_tbl <- data.frame(
+  Parameter   = c("$\\sigma^2_\\mu$", "$\\nu_1$", "$\\nu_2$",
+                   "$M$", "$\\alpha$"),
+  Default     = c("2", "2.01", "1.01", "50", "Gamma(1, 3)"),
+  Description = c(
+    "Base measure: cluster mean prior variance",
+    "Base measure: Inv-Gamma shape for cluster variance",
+    "Base measure: Inv-Gamma rate for cluster variance",
+    "CRP truncation level (maximum clusters)",
+    "Concentration parameter prior (Paganin default)"
+  ),
+  stringsAsFactors = FALSE
+)
+knitr::kable(hyper_tbl, align = c("l", "l", "l"))
+```
+
+These can be modified via `base_measure`:
+
+```r
+fit <- dpmirt(data, model = "rasch", prior = "dpm",
+              base_measure = list(s2_mu = 4, nu1 = 2.5, nu2 = 1.5),
+              M = 100)
+```
+
+### 5.4 When to Choose the DPM Prior
+
+- **Non-normal populations.** Heterogeneous test-taker groups (e.g.,
+  mixing advanced and introductory students).
+- **Multimodal distributions.** Floor/ceiling effects or distinct
+  subgroups.
+- **Exploratory analysis.** When you have little prior information
+  about the ability distribution shape.
+- **Shrinkage calibration.** The DPM prior produces less severe
+  shrinkage when the true distribution is non-Normal.
+
+When the true distribution is Normal, the DPM converges to a single
+cluster and reproduces the Normal-prior results with only a modest
+computation-time increase.
+
+### 5.5 Normal vs. DPM: When Normality Fails
+
+The guidelines above are easier to appreciate with a concrete example.
+The pre-computed bimodal simulation ships with the package: 200 persons
+drawn from a two-group mixture ($\theta \sim 0.5\,N(-1.5, 0.5) +
+0.5\,N(1.5, 0.5)$) assessed on 25 Rasch items ($\bar{w} \approx 0.8$).
+
+```{r load-bimodal, eval = has_bimodal}
+sim_bm    <- readRDS(find_extdata("vignette_sim_bimodal.rds"))
+fit_bm_n  <- readRDS(find_extdata("vignette_fit_rasch_normal_bimodal.rds"))
+fit_bm_d  <- readRDS(find_extdata("vignette_fit_rasch_dpm_bimodal.rds"))
+```
+
+WAIC provides a model-level comparison:
+
+```{r compare-bimodal, eval = has_bimodal}
+dpmirt_compare(fit_bm_n, fit_bm_d)
+```
+
+In this example the two WAIC values are nearly identical ($|\Delta\text{WAIC}| < 2$),
+which is expected: WAIC measures predictive accuracy for the *binary
+responses*, and both priors predict item responses equally well.
+The DPM's real advantage shows in the *recovered ability distribution*
+--- a difference that WAIC does not capture but the density plot below
+makes visually obvious.
+
+```{r bimodal-density, eval = has_bimodal, fig.height = 5, fig.cap = "True bimodal density (gray) versus posterior mean estimates under Normal (blue) and DPM (orange) priors.  The Normal prior forces a unimodal fit; the DPM prior recovers both modes."}
+true_theta <- sim_bm$theta
+pm_normal  <- colMeans(fit_bm_n$theta_samp)
+pm_dpm     <- colMeans(fit_bm_d$theta_samp)
+
+df_bm <- data.frame(
+  value  = c(true_theta, pm_normal, pm_dpm),
+  source = factor(rep(c("True", "Normal (PM)", "DPM (PM)"),
+                      each = length(true_theta)),
+                  levels = c("True", "Normal (PM)", "DPM (PM)"))
+)
+
+ggplot(df_bm, aes(x = value, fill = source, colour = source)) +
+  geom_density(alpha = 0.25, linewidth = 0.8) +
+  scale_fill_manual(values = c("True"         = pal$reference,
+                                "Normal (PM)" = pal$parametric,
+                                "DPM (PM)"    = pal$semiparametric)) +
+  scale_colour_manual(values = c("True"         = pal$reference,
+                                  "Normal (PM)" = pal$parametric,
+                                  "DPM (PM)"    = pal$semiparametric)) +
+  labs(title = "Recovering a Bimodal Population",
+       x = expression(theta), y = "Density") +
+  theme_bw() +
+  theme(legend.position = "top", legend.title = element_blank())
+```
+
+> **Take-away.** When the true distribution departs from normality, the
+> DPM prior produces posterior mean estimates that track the true
+> distributional shape far more accurately than the Normal prior.
+> WAIC may not detect this advantage because it evaluates
+> item-response prediction, not ability-distribution recovery.
+> For practical guidance on choosing the posterior summary that best
+> serves your inferential goal, see `vignette("posterior-summaries")`.
+
+**Practical recommendation.** For applied researchers who suspect
+non-normality, fit both priors and compare them using (1) WAIC for
+item-response prediction and (2) a density plot of posterior mean
+estimates for distributional recovery. When the population is truly
+non-normal and reliability is at least moderate ($\bar{w} \ge 0.7$),
+the density comparison will typically reveal the DPM's advantage even
+when WAIC values are similar.
+
+
+## 6. Identification Strategies
+
+```{r id-table, echo = FALSE}
+id_tbl <- data.frame(
+  Strategy  = c("constrained_ability", "constrained_item",
+                 "unconstrained"),
+  Rasch     = c("Yes", "Yes (default)", "Yes"),
+  `2PL/3PL` = c("Yes", "Yes", "Yes (default)"),
+  How       = c(
+    "Fix $\\theta \\sim N(0, 1)$; no hyperparameters",
+    "Mean-center $\\beta$ during MCMC (+ geom-mean $\\lambda = 1$)",
+    "No constraints; post-hoc rescaling via dpmirt_rescale()"
+  ),
+  stringsAsFactors = FALSE
+)
+knitr::kable(id_tbl,
+  col.names = c("Strategy", "Rasch", "2PL/3PL", "How It Works"),
+  align = c("l", "c", "c", "l"))
+```
+
+> **Paganin's finding.**
+> The unconstrained + post-hoc rescaling approach yields the most
+> efficient MCMC sampler for DPM-IRT models.
+> `constrained_ability` is **incompatible** with the DPM prior
+> (DPMirt will raise an error) since the DPM's purpose is to learn the
+> ability distribution from data.
+
+```r
+# Rasch with unconstrained + post-hoc rescaling
+fit <- dpmirt(data, model = "rasch", prior = "normal",
+              identification = "unconstrained")
+
+# 2PL with in-model constrained_item centering
+fit <- dpmirt(data, model = "2pl", prior = "normal",
+              identification = "constrained_item")
+```
+
+**How to choose.**
+For DPM models, use the defaults (`"constrained_item"` for Rasch,
+`"unconstrained"` for 2PL/3PL).
+For Normal-prior models all three are valid;
+`"constrained_ability"` gives the strongest $N(0,1)$ shrinkage.
+
+
+## 7. Chain Continuation
+
+When an initial run needs more iterations, `dpmirt_resume()` continues
+the sampler from its current state without recompilation.
+
+```r
+# Initial fit
+fit <- dpmirt(data, model = "rasch", prior = "dpm",
+              niter = 5000, nburnin = 1000, seed = 42)
+
+# Trace looks non-stationary...
+plot(fit, type = "trace")
+
+# Resume: add 10,000 more iterations (no burn-in needed)
+resumed <- dpmirt_resume(fit, niter_more = 10000)
+```
+
+With the step-by-step workflow:
+
+```r
+samples <- dpmirt_sample(compiled, niter = 5000, nburnin = 1000)
+resumed <- dpmirt_resume(compiled, niter_more = 10000)
+```
+
+> `dpmirt_resume()` requires the compiled model's C++ pointers to be
+> alive (same R session).  If pointers are expired, recompile.
+
+The returned `dpmirt_samples` object can then be passed through
+`dpmirt_rescale()` (which returns a `dpmirt_fit`) and `dpmirt_estimates()`.
+
+
+## 8. Model Comparison with WAIC
+
+Every `dpmirt_fit` stores a WAIC (Watanabe--Akaike Information
+Criterion) value, computed automatically during sampling.
+**Lower WAIC indicates better out-of-sample prediction.**
+
+```r
+comparison <- dpmirt_compare(fit_rasch_n, fit_rasch_dpm)
+comparison
+```
+
+```{r compare-demo, eval = has_compare}
+comparison <- dpmirt_compare(fit_rasch_n, fit_rasch_dpm)
+knitr::kable(comparison, digits = 2, row.names = FALSE)
+```
+
+The `delta_waic` column shows the difference from the best model.
+You can compare any number of fits:
+
+```r
+dpmirt_compare(fit_rasch_n, fit_rasch_dpm, fit_2pl)
+```
+
+> **Interpreting WAIC differences.**
+>
+> - $|\Delta\text{WAIC}| < 2$: Models essentially equivalent.
+> - $2 < |\Delta\text{WAIC}| < 10$: Moderate preference.
+> - $|\Delta\text{WAIC}| > 10$: Strong preference.
+
+
+## 9. Data Formats
+
+### Matrix Format (Default)
+
+Binary matrix with persons in rows and items in columns.
+Missing responses coded as `NA`.
+
+```{r matrix-format, eval = FALSE}
+head(sim$response[, 1:6])
+#>      [,1] [,2] [,3] [,4] [,5] [,6]
+#> [1,]    1    0    1    1    0    1
+#> [2,]    0    1    0    1    1    0
+```
+
+### Long Format
+
+A data.frame with columns for person, item, and response.
+DPMirt detects the format automatically and converts internally.
+
+```{r long-format, eval = FALSE}
+head(response_long)
+#>   person item response
+#> 1      1    1        1
+#> 2      1    2        0
+```
+
+```r
+fit <- dpmirt(response_long, model = "rasch", prior = "normal")
+```
+
+> If the long-to-matrix conversion produces a very large or sparse
+> matrix, verify dimensions with `dpmirt_spec()` before running the
+> full pipeline.
+
+
+## 10. Visualizations
+
+DPMirt provides 12 plot types via `plot(fit, type = ...)`.
+When **ggplot2** is installed it is used automatically; otherwise base R
+graphics are produced.
+
+```{r plot-types-table, echo = FALSE}
+plot_tbl <- data.frame(
+  Type        = c("density", "items", "trace", "clusters",
+                   "dp_density", "icc", "wright_map",
+                   "parameter_trace", "caterpillar",
+                   "density_compare", "info", "pp_check"),
+  Description = c(
+    "Kernel density of posterior mean theta",
+    "Item parameter estimates with posterior intervals",
+    "Log-likelihood trace (convergence diagnostic)",
+    "Active cluster count trace and posterior (DPM only)",
+    "DP mixture density with credible band (DPM only)",
+    "Item Characteristic Curves",
+    "Wright map: items and persons on common logit scale",
+    "Trace plots for individual parameters",
+    "Caterpillar plot of sorted estimates with CIs",
+    "Overlaid densities from two fits",
+    "Test and item information functions (2PL/3PL)",
+    "Posterior predictive check"
+  ),
+  stringsAsFactors = FALSE
+)
+knitr::kable(plot_tbl, align = c("l", "l"))
+```
+
+```{r plot-density-guide, eval = has_data, fig.height = 4, fig.cap = "Posterior density of person abilities."}
+plot(fit_rasch_dpm, type = "density")
+```
+
+```{r plot-items-guide, eval = has_data, fig.height = 4, fig.cap = "Item difficulty estimates with posterior intervals."}
+plot(fit_rasch_dpm, type = "items")
+```
+
+```{r plot-trace-guide, eval = has_data, fig.height = 4, fig.cap = "Log-likelihood trace."}
+plot(fit_rasch_dpm, type = "trace")
+```
+
+```{r plot-icc-guide, eval = has_data, fig.height = 5, fig.cap = "Item Characteristic Curves for items 1--6."}
+plot(fit_rasch_dpm, type = "icc", items = 1:6)
+```
+
+```{r plot-wright-guide, eval = has_data, fig.height = 5, fig.cap = "Wright map."}
+plot(fit_rasch_dpm, type = "wright_map")
+```
+
+
+## 11. Summary and What's Next?
+
+This vignette covered the full model and workflow space in DPMirt:
+
+- **Two workflow modes**: one-step `dpmirt()` and the step-by-step
+  pipeline for compile-once sampling.
+- **Three IRT models**: Rasch, 2PL, and 3PL, each with Normal or DPM
+  priors.
+- **Two parameterizations** for 2PL/3PL: IRT and slope--intercept.
+- **Three identification strategies**: constrained_ability,
+  constrained_item, and unconstrained + post-hoc rescaling.
+- **Chain continuation** with `dpmirt_resume()`.
+- **Model comparison** with WAIC via `dpmirt_compare()`.
+- **Twelve built-in plot types** for posterior visualization.
+
+```{r next-table, echo = FALSE}
+next_tbl <- data.frame(
+  Topic    = c("Choosing an estimator",
+               "Setting DPM priors",
+               "NIMBLE internals"),
+  Vignette = c("*Posterior Summaries*",
+               "*Prior Elicitation*",
+               "*NIMBLE Internals*"),
+  What     = c(
+    "In-depth PM vs CB vs GR comparison; shrinkage diagnostics; loss evaluation",
+    "Principled choice of the concentration parameter via DPprior",
+    "Customizing samplers, NIMBLE compilation model, advanced tuning"
+  ),
+  stringsAsFactors = FALSE
+)
+knitr::kable(next_tbl, align = c("l", "l", "l"))
+```

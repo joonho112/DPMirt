@@ -1,0 +1,33 @@
+# R user files
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+# macOS
+.DS_Store
+
+# Compiled code
+*.o
+*.so
+*.dll
+
+# Vignette build artifacts
+inst/doc
+doc
+/doc/
+
+# Package build metadata
+Meta
+/Meta/
+
+# Build artifacts
+*.tar.gz
+*.Rcheck
+DPMirt-manual.pdf
+
+# Development folder (logs, tests, reference code, benchmarks)
+dev/
+
+# Claude session artifacts
+.claude/

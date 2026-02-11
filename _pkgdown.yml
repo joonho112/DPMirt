@@ -1,0 +1,110 @@
+url: https://joonho112.github.io/DPMirt/
+template:
+  bootstrap: 5
+  bootswatch: cosmo
+  bslib:
+    primary: '#2980b9'
+home:
+  title: 'DPMirt: Bayesian Semiparametric IRT with DPM Priors'
+  description: |
+    Bayesian semiparametric Item Response Theory (IRT) models using
+    Dirichlet Process Mixture (DPM) priors via NIMBLE. Supports Rasch,
+    2PL, and 3PL models with triple-goal posterior estimation.
+authors:
+  JoonHo Lee:
+    href: https://github.com/joonho112
+navbar:
+  structure:
+    left:
+    - intro
+    - reference
+    - articles
+    - news
+    right:
+    - search
+    - github
+  components:
+    articles:
+      text: Vignettes
+      menu:
+      - text: '--- Getting Started ---'
+      - text: Introduction
+        href: articles/introduction.html
+      - text: Quick Start
+        href: articles/quick-start.html
+      - text: Models & Workflow
+        href: articles/models-and-workflow.html
+      - text: '--- Theory & Methods ---'
+      - text: IRT & DPM Theory
+        href: articles/theory-irt-dpm.html
+      - text: Posterior Summaries
+        href: articles/posterior-summaries.html
+      - text: Prior Elicitation
+        href: articles/prior-elicitation.html
+      - text: '--- Advanced ---'
+      - text: NIMBLE Internals
+        href: articles/nimble-internals.html
+      - text: Simulation Study
+        href: articles/simulation-study.html
+reference:
+- title: Package
+  contents:
+  - DPMirt-package
+- title: Main Fitting
+  desc: All-in-one model fitting function
+  contents:
+  - dpmirt
+- title: Step-by-Step Workflow
+  desc: Modular pipeline for fine-grained control
+  contents:
+  - dpmirt_spec
+  - dpmirt_compile
+  - dpmirt_sample
+  - dpmirt_rescale
+  - dpmirt_resume
+- title: Posterior Estimation
+  desc: Triple-goal estimation (PM, CB, GR) and raw posterior access
+  contents:
+  - dpmirt_estimates
+  - dpmirt_draws
+- title: Model Assessment
+  desc: Diagnostics, comparison, and loss evaluation
+  contents:
+  - dpmirt_diagnostics
+  - dpmirt_compare
+  - dpmirt_loss
+- title: DPM-Specific Analysis
+  desc: Dirichlet Process Mixture density and prior elicitation
+  contents:
+  - dpmirt_dp_density
+  - dpmirt_alpha_prior
+- title: Simulation
+  desc: Data generation with reliability targeting
+  contents:
+  - dpmirt_simulate
+- title: Visualization
+  desc: Plotting functions for model results (ggplot2-based)
+  contents:
+  - dpmirt_plot_density
+  - dpmirt_plot_items
+  - dpmirt_plot_trace
+  - dpmirt_plot_parameter_trace
+  - dpmirt_plot_caterpillar
+  - dpmirt_plot_icc
+  - dpmirt_plot_info
+  - dpmirt_plot_wright_map
+  - dpmirt_plot_clusters
+  - dpmirt_plot_dp_density
+  - dpmirt_plot_density_compare
+  - dpmirt_plot_pp_check
+- title: S3 Methods
+  desc: Print, summary, coef, and plot methods for DPMirt objects
+  contents:
+  - dpmirt_fit-methods
+  - plot.dpmirt_fit
+  - plot.dpmirt_estimates
+  - plot.dpmirt_sim
+footer:
+  structure:
+    left: developed_by
+    right: built_with

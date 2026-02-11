@@ -1,0 +1,16 @@
+^.*\.Rproj$
+^\.Rproj\.user$
+^dev$
+^blueprint_candidates$
+^Blueprint_FINAL\.md$
+^log-and-test$
+^\.claude$
+^\.DS_Store$
+^LICENSE\.md$
+^README\.Rmd$
+^\.github$
+^_pkgdown\.yml$
+^docs$
+^pkgdown$
+^doc$
+^Meta$

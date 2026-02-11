@@ -1,0 +1,41 @@
+Package: DPMirt
+Type: Package
+Title: Bayesian Semiparametric Item Response Theory Models Using Dirichlet
+    Process Mixture Priors
+Version: 0.1.0
+Authors@R:
+    person("JoonHo", "Lee", , "jlee296@ua.edu", role = c("aut", "cre"))
+Description: Fits Bayesian semiparametric Item Response Theory (IRT) models
+    using Dirichlet Process Mixture (DPM) priors via NIMBLE. Supports Rasch,
+    2PL, and 3PL models with both parametric (Normal) and semiparametric (DPM)
+    latent trait priors. Provides multiple posterior summary methods including
+    posterior mean (PM), constrained Bayes (CB; Ghosh, 1992), and triple-goal
+    (GR; Shen & Louis, 1998) estimators. Features a compile-once, sample-many
+    workflow for efficient MCMC computation, built-in simulation tools, and
+    comprehensive diagnostics.
+License: MIT + file LICENSE
+URL: https://joonho112.github.io/DPMirt/,
+    https://github.com/joonho112/DPMirt
+BugReports: https://github.com/joonho112/DPMirt/issues
+Depends:
+    R (>= 4.1.0)
+Imports:
+    nimble (>= 1.0.0),
+    coda,
+    stats,
+    methods,
+    utils
+Suggests:
+    DPprior,
+    IRTsimrel,
+    ggplot2 (>= 3.4.0),
+    bayesplot,
+    mcmcse,
+    knitr,
+    rmarkdown,
+    testthat (>= 3.0.0)
+VignetteBuilder: knitr
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+Config/testthat/edition: 3
+RoxygenNote: 7.3.3
