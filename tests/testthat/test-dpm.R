@@ -93,6 +93,16 @@ test_that("DPprior_fit list alpha_prior", {
   expect_equal(unname(spec$config$alpha_prior["b"]), 2.5)
 })
 
+test_that("DPprior_fit object with class accepted as alpha_prior", {
+  fake_fit <- list(a = 2.0, b = 1.0, J = 200, method = "A2-MN",
+                   target = list(mu_K = 5))
+  class(fake_fit) <- "DPprior_fit"
+  spec <- dpmirt_spec(y_test, model = "rasch", prior = "dpm",
+                       alpha_prior = fake_fit)
+  expect_equal(unname(spec$config$alpha_prior["a"]), 2.0)
+  expect_equal(unname(spec$config$alpha_prior["b"]), 1.0)
+})
+
 test_that("Invalid alpha_prior errors", {
   expect_error(
     dpmirt_spec(y_test, model = "rasch", prior = "dpm", alpha_prior = "bad"),

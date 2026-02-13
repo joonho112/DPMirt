@@ -1077,11 +1077,16 @@ dpmirt_spec <- function(data,
     return(c(a = 1, b = 3))
   }
 
-  # Check if DPprior_fit object
-
-  if (is.list(alpha_prior) && !is.null(alpha_prior$a) &&
-      !is.null(alpha_prior$b)) {
-    return(c(a = alpha_prior$a, b = alpha_prior$b))
+  # Check if DPprior_fit object (class-based or duck-typed)
+  if (inherits(alpha_prior, "DPprior_fit") ||
+      (is.list(alpha_prior) && !is.null(alpha_prior$a) &&
+       !is.null(alpha_prior$b))) {
+    ap <- c(a = alpha_prior$a, b = alpha_prior$b)
+    if (any(ap <= 0)) {
+      stop("DPprior_fit object contains non-positive Gamma parameters.",
+           call. = FALSE)
+    }
+    return(ap)
   }
 
   # Check if numeric vector c(a, b)

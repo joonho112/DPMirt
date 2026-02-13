@@ -71,6 +71,43 @@ test_that("dpmirt_alpha_prior auto-selects mu_K when NULL", {
 })
 
 
+test_that("dpmirt_alpha_prior return_fit returns DPprior_fit object", {
+  skip_if_not_installed("DPprior")
+
+  fit <- suppressMessages(
+    dpmirt_alpha_prior(N = 200, mu_K = 5, confidence = "medium",
+                       return_fit = TRUE)
+  )
+
+  # Should be a DPprior_fit object
+  expect_true(inherits(fit, "DPprior_fit"))
+  expect_true(!is.null(fit$a))
+  expect_true(!is.null(fit$b))
+  expect_true(fit$a > 0)
+  expect_true(fit$b > 0)
+
+  # Should have target info
+  expect_true(!is.null(fit$target))
+  expect_equal(fit$J, 200)
+})
+
+
+test_that("dpmirt_alpha_prior return_fit=FALSE is backward compatible", {
+  skip_if_not_installed("DPprior")
+
+  result <- suppressMessages(
+    dpmirt_alpha_prior(N = 200, mu_K = 5, confidence = "medium",
+                       return_fit = FALSE)
+  )
+
+  # Default behavior: named numeric vector
+  expect_true(is.numeric(result))
+  expect_false(inherits(result, "DPprior_fit"))
+  expect_equal(length(result), 2)
+  expect_equal(names(result), c("a", "b"))
+})
+
+
 # ============================================================================
 # .resolve_alpha_prior() tests (from model_spec.R / compile.R)
 # ============================================================================
@@ -95,4 +132,50 @@ test_that(".resolve_alpha_prior handles named vector input", {
   result <- DPMirt:::.resolve_alpha_prior(c(a = 0.5, b = 1.0), N = 200)
 
   expect_equal(unname(result), c(0.5, 1.0))
+})
+
+
+test_that(".resolve_alpha_prior handles DPprior_fit object with class", {
+  # Simulate a DPprior_fit object with the proper class
+  fake_fit <- list(a = 1.5, b = 2.5, J = 200, method = "A2-MN")
+  class(fake_fit) <- "DPprior_fit"
+
+  result <- DPMirt:::.resolve_alpha_prior(fake_fit, N = 200)
+
+  expect_equal(unname(result), c(1.5, 2.5))
+  expect_equal(names(result), c("a", "b"))
+})
+
+
+test_that(".resolve_alpha_prior handles duck-typed list with a and b", {
+  # A plain list with $a and $b (backward compatibility)
+  fake_fit <- list(a = 0.8, b = 1.2)
+
+  result <- DPMirt:::.resolve_alpha_prior(fake_fit, N = 200)
+
+  expect_equal(unname(result), c(0.8, 1.2))
+})
+
+
+test_that(".resolve_alpha_prior rejects invalid DPprior_fit with non-positive params", {
+  fake_fit <- list(a = -1, b = 2)
+  class(fake_fit) <- "DPprior_fit"
+
+  expect_error(
+    DPMirt:::.resolve_alpha_prior(fake_fit, N = 200),
+    "non-positive"
+  )
+})
+
+
+test_that(".resolve_alpha_prior rejects invalid input types", {
+  expect_error(
+    DPMirt:::.resolve_alpha_prior("invalid", N = 200),
+    "Invalid alpha_prior"
+  )
+
+  expect_error(
+    DPMirt:::.resolve_alpha_prior(c(1, 2, 3), N = 200),
+    "Invalid alpha_prior"
+  )
 })

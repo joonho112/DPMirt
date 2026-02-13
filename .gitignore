@@ -26,6 +26,9 @@ Meta
 *.Rcheck
 DPMirt-manual.pdf
 
+# Test artifacts
+tests/testthat/Rplots.pdf
+
 # Development folder (logs, tests, reference code, benchmarks)
 dev/
 
