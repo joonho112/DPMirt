@@ -154,6 +154,7 @@ Series B, 60}(2), 455--471.
 \seealso{
 Useful links:
 \itemize{
+  \item \url{https://joonho112.github.io/DPMirt/}
   \item \url{https://github.com/joonho112/DPMirt}
   \item Report bugs at \url{https://github.com/joonho112/DPMirt/issues}
 }

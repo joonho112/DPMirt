@@ -30,10 +30,11 @@
 #'   \code{"ceiling"}, \code{"custom"}.
 #'   Fallback supports: \code{"normal"}, \code{"bimodal"}, \code{"skewed"}.
 #' @param item_source Character. Source for item parameters in IRTsimrel.
-#'   One of \code{"irw"} (default), \code{"parametric"},
+#'   One of \code{"parametric"} (default), \code{"irw"},
 #'   \code{"hierarchical"}, \code{"custom"}.
 #' @param reliability_metric Character. Reliability metric for EQC calibration.
-#'   \code{"msem"} (default) or \code{"info"}.
+#'   \code{"info"} (default, average-information, recommended) or
+#'   \code{"msem"} (MSEM-based).
 #' @param latent_params List. Additional parameters passed to
 #'   \code{IRTsimrel::sim_latentG()} (e.g.,
 #'   \code{list(shape_params = list(delta = 0.8))}).
@@ -91,8 +92,8 @@ dpmirt_simulate <- function(n_persons,
                             model = c("rasch", "2pl", "3pl"),
                             target_rho = 0.8,
                             latent_shape = "normal",
-                            item_source = "irw",
-                            reliability_metric = c("msem", "info"),
+                            item_source = "parametric",
+                            reliability_metric = c("info", "msem"),
                             latent_params = list(),
                             item_params = list(),
                             M = 10000L,
@@ -136,7 +137,7 @@ dpmirt_simulate <- function(n_persons,
     } else if (use_irtsimrel &&
                !requireNamespace("IRTsimrel", quietly = TRUE)) {
       message("IRTsimrel not installed. Using fallback simulation. ",
-              "Install with: remotes::install_github('itemresponsewarehouse/IRTsimrel')")
+              "Install with: remotes::install_github('joonho112/IRTsimrel')")
     }
     result <- .simulate_fallback(n_persons, n_items, model, latent_shape)
     sim_method <- "fallback"
@@ -228,7 +229,7 @@ dpmirt_simulate <- function(n_persons,
   if (verbose) message("  Generating response data (N = ", n_persons, ")...")
 
   sim_args <- list(
-    eqc_result    = eqc_result,
+    result        = eqc_result,
     n_persons     = n_persons,
     latent_shape  = irtsimrel_shape,
     seed          = if (!is.null(seed)) seed + 1000L else NULL

@@ -11,8 +11,8 @@ dpmirt_simulate(
   model = c("rasch", "2pl", "3pl"),
   target_rho = 0.8,
   latent_shape = "normal",
-  item_source = "irw",
-  reliability_metric = c("msem", "info"),
+  item_source = "parametric",
+  reliability_metric = c("info", "msem"),
   latent_params = list(),
   item_params = list(),
   M = 10000L,
@@ -43,11 +43,12 @@ When using IRTsimrel, supports all 12 shapes: \code{"normal"},
 Fallback supports: \code{"normal"}, \code{"bimodal"}, \code{"skewed"}.}
 
 \item{item_source}{Character. Source for item parameters in IRTsimrel.
-One of \code{"irw"} (default), \code{"parametric"},
+One of \code{"parametric"} (default), \code{"irw"},
 \code{"hierarchical"}, \code{"custom"}.}
 
 \item{reliability_metric}{Character. Reliability metric for EQC calibration.
-\code{"msem"} (default) or \code{"info"}.}
+\code{"info"} (default, average-information, recommended) or
+\code{"msem"} (MSEM-based).}
 
 \item{latent_params}{List. Additional parameters passed to
 \code{IRTsimrel::sim_latentG()} (e.g.,
