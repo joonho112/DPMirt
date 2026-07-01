@@ -2,8 +2,8 @@
 
 ## Package
 
-- [`DPMirt-package`](https://joonho112.github.io/DPMirt/reference/DPMirt-package.md)
-  [`DPMirt`](https://joonho112.github.io/DPMirt/reference/DPMirt-package.md)
+- [`DPMirt`](https://joonho112.github.io/DPMirt/reference/DPMirt-package.md)
+  [`DPMirt-package`](https://joonho112.github.io/DPMirt/reference/DPMirt-package.md)
   : DPMirt: Bayesian Semiparametric IRT Models Using DPM Priors
 
 ## Main Fitting
@@ -33,7 +33,7 @@ Modular pipeline for fine-grained control
 
 ## Posterior Estimation
 
-Triple-goal estimation (PM, CB, GR) and raw posterior access
+Triple-goal estimation (PM, CB, GR) and rescaled posterior draw access
 
 - [`dpmirt_estimates()`](https://joonho112.github.io/DPMirt/reference/dpmirt_estimates.md)
   [`print(`*`<dpmirt_estimates>`*`)`](https://joonho112.github.io/DPMirt/reference/dpmirt_estimates.md)
@@ -65,7 +65,7 @@ Dirichlet Process Mixture density and prior elicitation
 
 ## Simulation
 
-Data generation with reliability targeting
+Rasch/2PL reliability-targeted simulation and fallback generation
 
 - [`dpmirt_simulate()`](https://joonho112.github.io/DPMirt/reference/dpmirt_simulate.md)
   [`print(`*`<dpmirt_sim>`*`)`](https://joonho112.github.io/DPMirt/reference/dpmirt_simulate.md)
@@ -73,7 +73,7 @@ Data generation with reliability targeting
 
 ## Visualization
 
-Plotting functions for model results (ggplot2-based)
+Plotting functions for model results
 
 - [`dpmirt_plot_density()`](https://joonho112.github.io/DPMirt/reference/dpmirt_plot_density.md)
   : Plot Posterior Mean Density

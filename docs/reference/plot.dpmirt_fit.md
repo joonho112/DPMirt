@@ -44,7 +44,9 @@ plot(
 
   `"dp_density"`
 
-  :   DP mixture density with credible band (DPM only).
+  :   DP mixture density with credible band (DPM only; see
+      [`dpmirt_dp_density`](https://joonho112.github.io/DPMirt/reference/dpmirt_dp_density.md)
+      for the transformed-scale caveat).
 
   `"icc"`
 
@@ -85,7 +87,15 @@ plot(
 
 ## Value
 
-Invisibly returns the plot object (ggplot) or NULL (base R).
+Invisibly returns a ggplot object when the ggplot2 backend is used;
+invisibly returns `NULL` when the base R backend is used.
+
+## Details
+
+For `type = "dp_density"`, Rasch/location-shift settings are the most
+directly interpretable. For transformed-scale 2PL/3PL IRT and SI fits,
+use the plot as a diagnostic summary because full scale/Jacobian density
+adjustment is not yet implemented.
 
 ## See also
 

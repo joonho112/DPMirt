@@ -34,7 +34,21 @@ dpmirt_resume(fit_or_compiled, niter_more, reset = FALSE, verbose = TRUE, ...)
 
 ## Value
 
-A `dpmirt_samples` object with extended samples.
+A `dpmirt_samples` object with extended samples. Pass the returned
+object to
+[`dpmirt_rescale`](https://joonho112.github.io/DPMirt/reference/dpmirt_rescale.md)
+before using fit methods such as
+[`summary()`](https://rdrr.io/r/base/summary.html),
+[`plot()`](https://rdrr.io/r/graphics/plot.default.html), or
+[`dpmirt_estimates()`](https://joonho112.github.io/DPMirt/reference/dpmirt_estimates.md).
+
+## Details
+
+Resume requires the original live compiled NIMBLE object; saved RDS
+objects cannot restore compiled external pointers. Multi-chain fitted
+objects cannot be continued with `reset = FALSE`; use `reset = TRUE` for
+a fresh single-chain restart or rerun
+[`dpmirt`](https://joonho112.github.io/DPMirt/reference/dpmirt.md).
 
 ## See also
 
@@ -55,7 +69,8 @@ if (FALSE) { # \dontrun{
 # Continue from a previous fit for more iterations
 fit <- dpmirt(sim$response, model = "rasch", prior = "normal",
               niter = 5000, nburnin = 1000)
-fit2 <- dpmirt_resume(fit, niter_more = 5000)
+resumed <- dpmirt_resume(fit, niter_more = 5000)
+fit2 <- dpmirt_rescale(resumed)
 summary(fit2)
 } # }
 ```

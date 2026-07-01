@@ -18,11 +18,12 @@
 #'
 #' @param samples_obj A \code{dpmirt_samples} object.
 #' @param rescale Logical. If TRUE (default), apply rescaling.
-#'   If FALSE, return samples as-is.
+#'   If FALSE, wrap untransformed posterior samples in a \code{dpmirt_fit}
+#'   object using the same downstream fit schema.
 #'
 #' @return A \code{dpmirt_fit} S3 object containing rescaled posterior
-#'   samples, diagnostics (ESS, WAIC, cluster info), and model
-#'   configuration.  This object can be passed directly to
+#'   samples, chain/run metadata, diagnostics (ESS, WAIC, cluster info), and
+#'   model configuration. This object can be passed directly to
 #'   \code{\link{dpmirt_estimates}}, \code{\link{dpmirt_resume}}, and
 #'   other downstream functions.
 #'
@@ -39,6 +40,16 @@
 #' \deqn{\beta^*_i = (\beta_i - c_s) / d_s}
 #' \deqn{\lambda^*_i = \lambda_i \cdot d_s}
 #' \deqn{\theta^*_j = (\theta_j - c_s) / d_s}
+#'
+#' \strong{2PL/3PL slope-intercept parameterization}: Let
+#' \eqn{c_s = \sum_i \gamma_i / \sum_i \lambda_i} and
+#' \eqn{d_s = (\prod_i \lambda_i)^{-1/I}}:
+#' \deqn{\gamma^*_i = \gamma_i - \lambda_i c_s}
+#' \deqn{\lambda^*_i = \lambda_i \cdot d_s}
+#' \deqn{\theta^*_j = (\theta_j + c_s) / d_s}
+#'
+#' Constrained models and calls with \code{rescale = FALSE} use the same
+#' \code{dpmirt_fit} wrapper but preserve the raw sampled scale.
 #'
 #' After rescaling: \eqn{\bar{\beta}^* = 0} and
 #' \eqn{(\prod_i \lambda^*_i)^{1/I} = 1}.
@@ -72,6 +83,9 @@ dpmirt_rescale <- function(samples_obj, rescale = TRUE) {
     stop("Input must be a dpmirt_samples object.", call. = FALSE)
   }
 
+  if (!is.null(samples_obj$draw_index) || !is.null(samples_obj$mcmc_control)) {
+    samples_obj <- .ensure_sample_chain_metadata(samples_obj)
+  }
   config <- samples_obj$model_config
 
   # No rescaling needed for constrained models
@@ -86,7 +100,11 @@ dpmirt_rescale <- function(samples_obj, rescale = TRUE) {
   }
 
   # Wrap the plain-list result into a dpmirt_fit S3 object
-  .build_fit_from_rescaled(rescaled, samples_obj)
+  .build_fit_from_rescaled(
+    rescaled,
+    samples_obj,
+    rescale_requested = isTRUE(rescale)
+  )
 }
 
 
@@ -136,17 +154,12 @@ dpmirt_rescale <- function(samples_obj, rescale = TRUE) {
     eta_rescaled <- eta_samp - location_shift
     location_shift_eta <- location_shift
   } else {
-    # If thin2 differs from thin, we need to align
-    # Use interpolated or subsetted location shifts
-    thin_ratio <- niter / niter_eta
-    if (thin_ratio == round(thin_ratio)) {
-      # Clean ratio: subsample location shifts
-      idx <- seq(1, niter, by = round(thin_ratio))
-      location_shift_eta <- location_shift[idx[1:niter_eta]]
-    } else {
-      # Approximate: use overall mean shift
-      location_shift_eta <- rep(mean(location_shift), niter_eta)
-    }
+    location_shift_eta <- .align_main_shift_to_theta(
+      samples_obj,
+      location_shift,
+      n_theta = niter_eta,
+      shift_name = "location_shift"
+    )
     eta_rescaled <- eta_samp - location_shift_eta
   }
 
@@ -232,15 +245,18 @@ dpmirt_rescale <- function(samples_obj, rescale = TRUE) {
     location_shift_eta <- location_shift
     scale_shift_eta <- scale_shift
   } else {
-    thin_ratio <- niter / niter_eta
-    if (thin_ratio == round(thin_ratio)) {
-      idx <- seq(1, niter, by = round(thin_ratio))
-      location_shift_eta <- location_shift[idx[1:niter_eta]]
-      scale_shift_eta    <- scale_shift[idx[1:niter_eta]]
-    } else {
-      location_shift_eta <- rep(mean(location_shift), niter_eta)
-      scale_shift_eta    <- rep(mean(scale_shift), niter_eta)
-    }
+    location_shift_eta <- .align_main_shift_to_theta(
+      samples_obj,
+      location_shift,
+      n_theta = niter_eta,
+      shift_name = "location_shift"
+    )
+    scale_shift_eta <- .align_main_shift_to_theta(
+      samples_obj,
+      scale_shift,
+      n_theta = niter_eta,
+      shift_name = "scale_shift"
+    )
     eta_rescaled <- (eta_samp - location_shift_eta) / scale_shift_eta
   }
 
@@ -328,15 +344,18 @@ dpmirt_rescale <- function(samples_obj, rescale = TRUE) {
     location_shift_eta <- location_shift
     scale_shift_eta <- scale_shift
   } else {
-    thin_ratio <- niter / niter_eta
-    if (thin_ratio == round(thin_ratio)) {
-      idx <- seq(1, niter, by = round(thin_ratio))
-      location_shift_eta <- location_shift[idx[1:niter_eta]]
-      scale_shift_eta    <- scale_shift[idx[1:niter_eta]]
-    } else {
-      location_shift_eta <- rep(mean(location_shift), niter_eta)
-      scale_shift_eta    <- rep(mean(scale_shift), niter_eta)
-    }
+    location_shift_eta <- .align_main_shift_to_theta(
+      samples_obj,
+      location_shift,
+      n_theta = niter_eta,
+      shift_name = "location_shift"
+    )
+    scale_shift_eta <- .align_main_shift_to_theta(
+      samples_obj,
+      scale_shift,
+      n_theta = niter_eta,
+      shift_name = "scale_shift"
+    )
     eta_rescaled <- (eta_samp + location_shift_eta) / scale_shift_eta
   }
 
@@ -371,6 +390,66 @@ dpmirt_rescale <- function(samples_obj, rescale = TRUE) {
 # ============================================================================
 # No-Rescale Passthrough
 # ============================================================================
+
+.align_main_shift_to_theta <- function(samples_obj,
+                                       shift,
+                                       n_theta,
+                                       shift_name = "shift") {
+  n_main <- length(shift)
+  if (n_theta == n_main) {
+    return(shift)
+  }
+
+  main_index <- samples_obj$draw_index$main
+  theta_index <- samples_obj$draw_index$theta
+
+  has_iteration_index <- !is.null(main_index) &&
+    !is.null(theta_index) &&
+    all(c("mcmc_iteration", "row") %in% names(main_index)) &&
+    all(c("mcmc_iteration", "row") %in% names(theta_index)) &&
+    nrow(main_index) == n_main &&
+    nrow(theta_index) == n_theta
+
+  if (has_iteration_index) {
+    main_key <- paste(main_index$chain_id, main_index$mcmc_iteration,
+                      sep = "\r")
+    theta_key <- paste(theta_index$chain_id, theta_index$mcmc_iteration,
+                       sep = "\r")
+    if (anyDuplicated(main_key)) {
+      stop(
+        "Cannot align theta draws to main draws for ", shift_name,
+        ": duplicate main draw chain/iteration keys.",
+        call. = FALSE
+      )
+    }
+    idx <- match(theta_key, main_key)
+    if (any(is.na(idx))) {
+      stop(
+        "Cannot align theta draws to main draws for ", shift_name,
+        ": theta draw iteration(s) are not present in main monitors. ",
+        "Use compatible thin/thin2 values so theta iterations are a subset ",
+        "of main monitor iterations.",
+        call. = FALSE
+      )
+    }
+    return(shift[idx])
+  }
+
+  thin_ratio <- n_main / n_theta
+  if (is.finite(thin_ratio) && thin_ratio == round(thin_ratio)) {
+    idx <- seq(1, n_main, by = round(thin_ratio))
+    if (length(idx) >= n_theta) {
+      return(shift[idx[seq_len(n_theta)]])
+    }
+  }
+
+  stop(
+    "Cannot align theta draws to main draws for ", shift_name,
+    ". Provide draw_index metadata or use integer-ratio thinning.",
+    call. = FALSE
+  )
+}
+
 
 #' Pass through samples without rescaling
 #' @noRd
@@ -495,8 +574,11 @@ dpmirt_rescale <- function(samples_obj, rescale = TRUE) {
 #' @param samples_obj The original `dpmirt_samples` object.
 #' @return A `dpmirt_fit` S3 object.
 #' @noRd
-.build_fit_from_rescaled <- function(rescaled, samples_obj) {
+.build_fit_from_rescaled <- function(rescaled,
+                                     samples_obj,
+                                     rescale_requested = TRUE) {
 
+  samples_obj <- .ensure_sample_chain_metadata(samples_obj)
   config <- samples_obj$model_config
 
   # Compute diagnostics
@@ -520,13 +602,40 @@ dpmirt_rescale <- function(samples_obj, rescale = TRUE) {
 
   # Build the MCMC control info from samples_obj if available
   mcmc_ctrl <- samples_obj$mcmc_control
-  niter   <- if (!is.null(mcmc_ctrl$niter))   mcmc_ctrl$niter   else nrow(rescaled$beta_samp)
-  nburnin <- if (!is.null(mcmc_ctrl$nburnin)) mcmc_ctrl$nburnin else NULL
-  thin    <- if (!is.null(mcmc_ctrl$thin))    mcmc_ctrl$thin    else 1L
-  thin2   <- if (!is.null(mcmc_ctrl$thin2))   mcmc_ctrl$thin2   else 1L
+  niter <- .control_get(
+    mcmc_ctrl, "niter",
+    .control_get(mcmc_ctrl, "niter_total_retained", nrow(rescaled$beta_samp))
+  )
+  nburnin <- .control_get(mcmc_ctrl, "nburnin", NULL)
+  thin    <- .control_get(mcmc_ctrl, "thin", 1L)
+  thin2   <- .control_get(mcmc_ctrl, "thin2", 1L)
+
+  chain_info <- samples_obj$chain_info
+  draw_index <- samples_obj$draw_index
+  run_history <- samples_obj$run_history
+  chain_diagnostics <- .build_chain_diagnostics(
+    ess = ess,
+    waic = samples_obj$waic,
+    loglik_trace = loglik_trace,
+    cluster_info = cluster_info,
+    chain_info = chain_info,
+    draw_index = draw_index,
+    draws = list(
+      items = rescaled$beta_samp,
+      theta = rescaled$theta_samp,
+      lambda = rescaled$lambda_samp,
+      delta = rescaled$delta_samp
+    )
+  )
 
   structure(
     list(
+      # Schema
+      schema_version = .schema_version(),
+      chain_info     = chain_info,
+      draw_index     = draw_index,
+      run_history    = run_history,
+
       # Core rescaled samples
       theta_samp     = rescaled$theta_samp,
       beta_samp      = rescaled$beta_samp,
@@ -551,6 +660,7 @@ dpmirt_rescale <- function(samples_obj, rescale = TRUE) {
 
       # Diagnostics
       ess            = ess,
+      diagnostics    = chain_diagnostics,
       loglik_trace   = loglik_trace,
 
       # Timings
@@ -574,7 +684,9 @@ dpmirt_rescale <- function(samples_obj, rescale = TRUE) {
         thin             = thin,
         thin2            = thin2,
         nchains          = 1L,
-        rescale          = TRUE
+        n_draws_main     = nrow(rescaled$beta_samp),
+        n_draws_theta    = nrow(rescaled$theta_samp),
+        rescale          = isTRUE(rescale_requested)
       )
     ),
     class = "dpmirt_fit"

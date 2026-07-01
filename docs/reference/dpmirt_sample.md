@@ -16,6 +16,9 @@ dpmirt_sample(
   seed = NULL,
   reset = TRUE,
   verbose = TRUE,
+  inits = NULL,
+  init_seed = NULL,
+  init_strategy = NULL,
   ...
 )
 
@@ -53,12 +56,28 @@ print(x, ...)
 
 - reset:
 
-  Logical. If TRUE (default), reset the MCMC state before sampling. Set
-  to FALSE for chain continuation.
+  Logical. If TRUE (default), reset sample and WAIC storage before
+  sampling. Set to FALSE to continue from the compiled object's current
+  sampler state and append to existing sample storage.
 
 - verbose:
 
   Logical. Print progress messages.
+
+- inits:
+
+  Optional list of initial values to apply before sampling. This is
+  mainly used internally for chain-specific starts and requires
+  `reset = TRUE`.
+
+- init_seed:
+
+  Optional integer seed used to generate `inits`, stored as provenance.
+
+- init_strategy:
+
+  Optional character label describing how initial values were chosen,
+  stored as provenance.
 
 - ...:
 
@@ -99,6 +118,22 @@ A `dpmirt_samples` S3 object containing:
 - compiled:
 
   Reference to compiled object (for resume).
+
+- schema_version:
+
+  Draw-storage schema version.
+
+- chain_info:
+
+  Data frame describing retained rows by chain.
+
+- draw_index:
+
+  Main/theta row maps with chain and MCMC iteration IDs.
+
+- run_history:
+
+  Data frame describing sampling runs.
 
 ## See also
 

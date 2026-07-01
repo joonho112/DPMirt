@@ -71,6 +71,98 @@ test_that("dpmirt_spec creates valid spec for Rasch-Normal-constrainedAbility", 
 })
 
 
+test_that("dpmirt_spec accepts only reserved empty item_priors", {
+  y <- make_test_data()
+
+  spec_null <- dpmirt_spec(y, model = "rasch", prior = "normal",
+                           item_priors = NULL)
+  expect_identical(spec_null$config$item_priors, list())
+
+  spec_empty <- dpmirt_spec(y, model = "rasch", prior = "normal",
+                            item_priors = list())
+  expect_identical(spec_empty$config$item_priors, list())
+
+  expect_error(
+    dpmirt_spec(y, model = "rasch", prior = "normal",
+                item_priors = "default"),
+    "item_priors.*reserved"
+  )
+
+  expect_error(
+    dpmirt_spec(
+      y, model = "rasch", prior = "normal",
+      item_priors = list(beta = list(mean = 0, var = 3))
+    ),
+    "Non-empty item_priors.*reserved"
+  )
+})
+
+
+test_that("chain-specific initial values are reproducible and isolated", {
+  y <- make_test_data(N = 16, I = 4, seed = 20260211)
+  specs <- list(
+    rasch_normal = dpmirt_spec(
+      y, model = "rasch", prior = "normal", identification = "unconstrained"
+    ),
+    rasch_dpm = dpmirt_spec(
+      y, model = "rasch", prior = "dpm", M = 8L
+    ),
+    two_pl = dpmirt_spec(
+      y, model = "2pl", prior = "normal", identification = "unconstrained"
+    )
+  )
+
+  state_before <- .Random.seed
+  for (spec in specs) {
+    init1 <- DPMirt:::.generate_chain_inits(spec, chain_id = 1L, seed = 700L)
+    init1_again <- DPMirt:::.generate_chain_inits(
+      spec, chain_id = 1L, seed = 700L
+    )
+    init2 <- DPMirt:::.generate_chain_inits(spec, chain_id = 2L, seed = 700L)
+
+    expect_equal(init1, init1_again)
+    expect_equal(names(init1), names(init2))
+    expect_equal(length(init1$eta), spec$config$N)
+    expect_false(identical(
+      unlist(init1, use.names = FALSE),
+      unlist(init2, use.names = FALSE)
+    ))
+  }
+  expect_identical(.Random.seed, state_before)
+})
+
+
+test_that(".chain_initial_values records per-chain init provenance", {
+  y <- make_test_data(N = 12, I = 4, seed = 20260212)
+  spec <- dpmirt_spec(y, model = "rasch", prior = "normal")
+
+  seeded_1 <- DPMirt:::.chain_initial_values(
+    spec, chain_id = 1L, seed = 11L, nchains = 2L
+  )
+  seeded_2 <- DPMirt:::.chain_initial_values(
+    spec, chain_id = 2L, seed = 11L, nchains = 2L
+  )
+  expect_equal(seeded_1$init_seed, 11L)
+  expect_equal(seeded_2$init_seed, 12L)
+  expect_equal(seeded_1$init_strategy, "chain_seeded")
+  expect_false(identical(seeded_1$inits, seeded_2$inits))
+
+  random_multi <- DPMirt:::.chain_initial_values(
+    spec, chain_id = 1L, seed = NULL, nchains = 2L
+  )
+  expect_null(random_multi$init_seed)
+  expect_equal(random_multi$init_strategy, "chain_random")
+  expect_true(is.list(random_multi$inits))
+
+  inherited_single <- DPMirt:::.chain_initial_values(
+    spec, chain_id = 1L, seed = NULL, nchains = 1L
+  )
+  expect_null(inherited_single$inits)
+  expect_null(inherited_single$init_seed)
+  expect_equal(inherited_single$init_strategy, "compiled_spec")
+})
+
+
 # ============================================================================
 # dpmirt_spec() — Rasch + DPM
 # ============================================================================
@@ -131,6 +223,16 @@ test_that("dpmirt_spec rejects SI + Rasch", {
     dpmirt_spec(y, model = "rasch", prior = "normal",
                 parameterization = "si"),
     "not meaningful"
+  )
+})
+
+
+test_that("dpmirt_spec rejects constrained_item + 3PL", {
+  y <- make_test_data()
+  expect_error(
+    dpmirt_spec(y, model = "3pl", prior = "normal",
+                identification = "constrained_item"),
+    "not implemented"
   )
 })
 

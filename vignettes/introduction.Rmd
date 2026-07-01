@@ -192,10 +192,13 @@ knitr::kable(arch_df, col.names = c("Layer", "Purpose", "Key Functions"),
 Most users will interact primarily with the **User Interface** layer. A
 single call to `dpmirt()` handles the entire pipeline---from building the
 NIMBLE model code, through compilation, MCMC sampling, post-hoc rescaling,
-and WAIC computation---returning a fitted model object ready for
-summarization and plotting. For users who need more control, the
+and optional WAIC computation---returning a fitted model object ready for
+summarization and plotting. The fitted object also stores chain/run metadata
+(`schema_version`, `chain_info`, `draw_index`, and `run_history`) used by
+diagnostics and draw extraction. For users who need more control, the
 **Step-by-Step** layer exposes each stage as a separate function, following
-a compile-once, sample-many pattern that avoids redundant C++ compilation.
+a compile-once, sample-many pattern while the compiled NIMBLE object is live
+in the current R session.
 
 
 ## Three Inferential Goals
@@ -258,11 +261,11 @@ model_df <- data.frame(
   Parameterizations = c("IRT", "IRT", "IRT, SI", "IRT, SI",
                          "IRT, SI", "IRT, SI"),
   Identification = c(
-    "Constrained item*, ability, unconstrained",
+    "Constrained item*, constrained ability, unconstrained",
     "Constrained item*, unconstrained",
-    "Unconstrained*, ability, constrained item",
-    "Unconstrained*",
-    "Unconstrained*, ability",
+    "Unconstrained*, constrained ability, constrained item",
+    "Unconstrained*, constrained item",
+    "Unconstrained*, constrained ability",
     "Unconstrained*")
 )
 knitr::kable(model_df,
@@ -283,11 +286,20 @@ knitr::kable(model_df,
   item parameters, constraining abilities, or leaving the model
   unconstrained with post-hoc rescaling. The unconstrained + rescaling
   approach is the default for 2PL/3PL, following Paganin et al. (2023).
+  Some combinations are intentionally unavailable: DPM models reject
+  `constrained_ability`, and 3PL models reject `constrained_item`.
 
 - **DPM prior.** Uses the Chinese Restaurant Process (CRP) representation
   with cluster atoms from a Normal-Inverse-Gamma base measure. The
   concentration parameter $\alpha$ receives a Gamma hyperprior---either the
-  default $\text{Gamma}(1, 3)$ or a principled choice via `DPprior`.
+  default $\text{Gamma}(1, 3)$ or an optional principled choice via
+  `DPprior`.
+
+- **3PL guessing.** The 3PL model includes item-specific lower asymptote
+  parameters $\delta_i$. DPMirt reports posterior summaries and plots for
+  $\delta$ where applicable. For simulation, reliability targeting is
+  available through IRTsimrel for Rasch/2PL; 3PL currently uses DPMirt's
+  fallback generator and does not target `target_rho`.
 
 
 ## Backbone References
@@ -310,12 +322,12 @@ with the GR estimator yields substantial gains for ranking and distribution
 recovery.
 
 **Lee (2026)** developed the DPprior package for principled specification of
-the Gamma hyperprior on $\alpha$. Rather than an arbitrary default,
-researchers express beliefs about expected latent subgroups and uncertainty,
-and DPprior translates these into calibrated Gamma($a$, $b$) hyperparameters.
-This is especially important when sample size is moderate and item quality
-is limited, where the prior on $\alpha$ can substantially influence
-posterior inference.
+the Gamma hyperprior on $\alpha$. DPMirt can use this optional package when
+researchers express beliefs about expected latent subgroups and uncertainty;
+otherwise it falls back to the conservative $\text{Gamma}(1, 3)$ default.
+This is especially important when sample size is moderate and item quality is
+limited, where the prior on $\alpha$ can substantially influence posterior
+inference.
 
 
 ## Installation
@@ -343,9 +355,14 @@ install.packages("ggplot2")
 # Principled alpha elicitation
 remotes::install_github("joonho112/DPprior")
 
-# Reliability-targeted simulation
+# Reliability-targeted Rasch/2PL simulation
 remotes::install_github("joonho112/IRTsimrel")
 ```
+
+DPMirt works without the two optional GitHub packages above. Without
+DPprior, alpha-prior elicitation falls back to $\text{Gamma}(1, 3)$. Without
+IRTsimrel, `dpmirt_simulate()` uses DPMirt's internal fallback simulator,
+which does not target reliability.
 
 After installation, load the package:
 
@@ -394,7 +411,7 @@ methods_df <- data.frame(
                "[NIMBLE Internals](nimble-internals.html)"),
   Purpose = c(
     "IRT model theory, DPM priors, identification, and posterior summary derivations",
-    "Custom samplers, compile-once pattern, and advanced NIMBLE configuration"),
+    "Custom sampler hooks, compile-once pattern, and advanced NIMBLE configuration"),
   Time = c("45--60 min", "30--40 min")
 )
 knitr::kable(methods_df, col.names = c("Vignette", "Purpose", "Time"),

@@ -23,17 +23,26 @@
 #' }
 #'
 #' @param fit A \code{dpmirt_fit} object from \code{\link{dpmirt}}.
-#' @param methods Character vector of methods to compute. Default
-#'   \code{c("pm", "cb", "gr")}.
+#' @param methods Character vector of person-summary methods to compute.
+#'   Default \code{c("pm", "cb", "gr")}. When \code{methods = "pm"},
+#'   theta summaries contain only posterior mean, posterior SD, and credible
+#'   interval columns; CB, GR, and rank columns are not computed.
 #' @param alpha Significance level for credible intervals. Default 0.05.
 #' @param quantile_type Integer 1-9 for \code{quantile()} type parameter.
 #'   Default 7 (R default).
 #' @param stop_if_ties Logical. If TRUE, stop when ties detected in
 #'   posterior mean ranks. Default FALSE.
-#' @param include_items Logical. If TRUE, apply CB/GR to beta as well.
+#' @param include_items Logical. If TRUE, apply requested CB/GR methods to
+#'   beta as well. Theta summaries are always governed by \code{methods}.
 #'   Default TRUE.
 #'
-#' @return A \code{dpmirt_estimates} S3 object.
+#' @return A \code{dpmirt_estimates} S3 object with components
+#'   \code{theta}, \code{beta}, \code{lambda}, \code{delta},
+#'   \code{methods}, \code{alpha}, and \code{quality_flags}. Theta summaries
+#'   include the requested methods. When requested, beta summaries may include
+#'   PM, CB, and GR columns.
+#'   Lambda and delta summaries include posterior mean, posterior SD, and
+#'   credible interval columns.
 #'
 #' @references
 #' Ghosh, M. (1992). Constrained Bayes estimation with applications.
@@ -77,7 +86,7 @@
 #' # Access item estimates
 #' head(est$beta)
 #'
-#' # PM only (faster)
+#' # PM-only summaries (faster; no CB/GR/rank columns)
 #' est_pm <- dpmirt_estimates(fit, methods = "pm")
 #' }
 #'
@@ -105,12 +114,18 @@ dpmirt_estimates <- function(fit,
     stop("No theta posterior samples found in fit object.", call. = FALSE)
   }
 
-  # Apply .triple_goal for person parameters
-  theta_result <- .triple_goal(
-    s = theta_samp,
-    quantile_type = quantile_type,
-    stop_if_ties  = stop_if_ties
-  )
+  if (any(methods %in% c("cb", "gr"))) {
+    theta_result <- .triple_goal(
+      s = theta_samp,
+      quantile_type = quantile_type,
+      stop_if_ties  = stop_if_ties
+    )
+  } else {
+    theta_result <- data.frame(
+      theta_pm  = colMeans(theta_samp),
+      theta_psd = apply(theta_samp, 2, sd)
+    )
+  }
 
   # Add credible intervals
   lower_q <- alpha / 2

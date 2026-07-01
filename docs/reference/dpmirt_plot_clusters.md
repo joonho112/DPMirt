@@ -1,8 +1,8 @@
 # Plot Cluster Count Diagnostics
 
 For DPM models, displays the trace and histogram of the number of active
-clusters across MCMC iterations. Stable oscillation indicates
-convergence. Requires ggplot2.
+clusters across MCMC iterations. Stable oscillation is a useful
+first-pass visual mixing check. Requires ggplot2.
 
 ## Usage
 

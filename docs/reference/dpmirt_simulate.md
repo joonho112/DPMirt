@@ -1,9 +1,11 @@
 # Simulate IRT response data
 
 Generates binary response data under known IRT parameters. When
-IRTsimrel is available, uses EQC (Empirical Quadrature Calibration) to
-achieve a target marginal reliability. Otherwise falls back to
-Paganin-style simulation without reliability targeting.
+IRTsimrel is available, uses IRTsimrel calibration to target a marginal
+reliability. The returned `reliability` field is the empirical KR-20
+reliability of the generated response matrix; the calibration-level
+achieved marginal reliability is returned as `achieved_rho`. Otherwise
+falls back to Paganin-style simulation without reliability targeting.
 
 ## Usage
 
@@ -14,8 +16,8 @@ dpmirt_simulate(
   model = c("rasch", "2pl", "3pl"),
   target_rho = 0.8,
   latent_shape = "normal",
-  item_source = "irw",
-  reliability_metric = c("msem", "info"),
+  item_source = "parametric",
+  reliability_metric = c("info", "msem"),
   latent_params = list(),
   item_params = list(),
   M = 10000L,
@@ -41,46 +43,54 @@ print(x, ...)
 
 - model:
 
-  Character. IRT model type: `"rasch"` or `"2pl"`.
+  Character. IRT model type: `"rasch"`, `"2pl"`, or `"3pl"`. IRTsimrel
+  reliability targeting is available for Rasch and 2PL; 3PL simulations
+  use DPMirt's fallback generator.
 
 - target_rho:
 
   Numeric in (0, 1). Target marginal reliability. Only used when
-  IRTsimrel is available. Default 0.8.
+  IRTsimrel is available and `model` is `"rasch"` or `"2pl"`. Default
+  0.8.
 
 - latent_shape:
 
   Character. Shape of latent ability distribution. When using IRTsimrel,
   supports all 12 shapes: `"normal"`, `"bimodal"`, `"trimodal"`,
   `"multimodal"`, `"skew_pos"`, `"skew_neg"`, `"heavy_tail"`,
-  `"light_tail"`, `"uniform"`, `"floor"`, `"ceiling"`, `"custom"`.
-  Fallback supports: `"normal"`, `"bimodal"`, `"skewed"`.
+  `"light_tail"`, `"uniform"`, `"floor"`, `"ceiling"`, `"custom"`. For
+  `"custom"`, supply
+  `latent_params = list(mixture_spec = list(weights = ..., means = ..., sds = ...))`;
+  custom shapes require IRTsimrel with `model = "rasch"` or
+  `model = "2pl"`. Fallback supports: `"normal"`, `"bimodal"`,
+  `"skewed"`.
 
 - item_source:
 
-  Character. Source for item parameters in IRTsimrel. One of `"irw"`
-  (default), `"parametric"`, `"hierarchical"`, `"custom"`.
+  Character. Source for item parameters in IRTsimrel. One of
+  `"parametric"` (default), `"irw"`, `"hierarchical"`, `"custom"`.
 
 - reliability_metric:
 
-  Character. Reliability metric for EQC calibration. `"msem"` (default)
-  or `"info"`.
+  Character. Reliability metric for IRTsimrel calibration. `"info"`
+  (default, average-information, recommended) uses EQC calibration;
+  `"msem"` uses IRTsimrel's SAC calibration.
 
 - latent_params:
 
-  List. Additional parameters passed to
-  [`IRTsimrel::sim_latentG()`](https://joonho112.github.io/IRTsimrel/reference/sim_latentG.html)
-  (e.g., `list(shape_params = list(delta = 0.8))`).
+  List. Additional parameters passed to `IRTsimrel::sim_latentG()`
+  (e.g., `list(shape_params = list(delta = 0.8))`). If
+  `latent_shape = "custom"`, this must include `mixture_spec`.
 
 - item_params:
 
-  List. Additional parameters passed to
-  [`IRTsimrel::sim_item_params()`](https://joonho112.github.io/IRTsimrel/reference/sim_item_params.html)
+  List. Additional parameters passed to `IRTsimrel::sim_item_params()`
   (e.g., `list(discrimination_params = list(rho = -0.3))`).
 
 - M:
 
-  Integer. Quadrature sample size for EQC. Default 10000.
+  Integer. Quadrature sample size for EQC, and pre-calibration
+  quadrature size for SAC. Default 10000.
 
 - seed:
 
@@ -122,7 +132,11 @@ A `dpmirt_sim` S3 object containing:
 
 - lambda:
 
-  True discriminations (length I for 2PL, NULL for Rasch)
+  True discriminations (length I for 2PL/3PL, NULL for Rasch)
+
+- delta:
+
+  True guessing parameters (length I for 3PL, NULL otherwise)
 
 - n_persons, n_items, model:
 
@@ -130,7 +144,11 @@ A `dpmirt_sim` S3 object containing:
 
 - reliability:
 
-  Achieved marginal reliability
+  Empirical KR-20 reliability of the response matrix
+
+- achieved_rho:
+
+  IRTsimrel calibration achieved marginal reliability (NULL if fallback)
 
 - target_rho:
 
@@ -142,7 +160,9 @@ A `dpmirt_sim` S3 object containing:
 
 - eqc_result:
 
-  EQC calibration result (NULL if fallback)
+  IRTsimrel calibration result (NULL if fallback). The field name is
+  retained for backward compatibility; the object class distinguishes
+  EQC and SAC results.
 
 - method:
 

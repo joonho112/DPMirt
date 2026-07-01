@@ -9,7 +9,7 @@ DPMirt is built on top of the NIMBLE probabilistic programming framework
 - Inspect and modify the **custom NIMBLE components** (distributions and
   samplers).
 - Leverage the **compile-once, sample-many** pattern for efficient
-  multi-chain or exploratory workflows.
+  same-session continuation or exploratory workflows.
 - Understand the **post-hoc rescaling** that resolves identification
   indeterminacy.
 - Reconstruct the **DP mixture density** from posterior samples.
@@ -37,7 +37,9 @@ dispatching on three configuration axes:
 | Identification | constrained_item, constrained_ability, unconstrained |
 
 This yields $`3 \times 2 \times 3 = 18`$ potential combinations (not all
-valid), all generated from a single specification call.
+valid), all generated from a single specification call. Current
+validation rejects `constrained_ability` with DPM priors and rejects
+`constrained_item` for 3PL models.
 
 ### Inspecting a Specification
 
@@ -56,23 +58,24 @@ sim <- dpmirt_simulate(200, 25, model = "rasch", latent_shape = "bimodal",
 # Create a specification (no compilation)
 spec <- dpmirt_spec(
   sim$response,
-  model  = "rasch",
-  prior  = "dpm",
-  alpha_prior = c(a = 1, b = 3),
+  model          = "rasch",
+  prior          = "dpm",
+  identification = "unconstrained",
+  alpha_prior    = c(a = 1, b = 3),
   base_measure = list(s2_mu = 2, nu1 = 2.01, nu2 = 1.01)
 )
 
 print(spec)
 #> DPMirt Model Specification
 #> ==========================
-#> Model:            RASCH 
-#> Prior:            dpm 
-#> Identification:   constrained_item 
-#> Persons (N):      200 
-#> Items (I):        25 
-#> Max clusters (M): 50 
+#> Model:            RASCH
+#> Prior:            dpm
+#> Identification:   unconstrained
+#> Persons (N):      200
+#> Items (I):        25
+#> Max clusters (M): 50
 #> Alpha prior:      Gamma(1, 3)
-#> Monitors:         beta, alpha, zi, muTilde, s2Tilde, myLogProbAll, myLogProbSome, myLogLik 
+#> Monitors:         beta, alpha, zi, muTilde, s2Tilde, myLogProbAll, myLogProbSome, myLogLik
 #> Monitors2:        eta
 ```
 
@@ -85,16 +88,15 @@ manipulate:
 
 spec$code
 #> {
-#>     for (j in 1:N) {
-#>         for (i in 1:I) {
+#>     for (i in 1:I) {
+#>         for (j in 1:N) {
 #>             y[j, i] ~ dbern(pi[j, i])
 #>             logit(pi[j, i]) <- eta[j] - beta[i]
 #>         }
 #>     }
 #>     for (i in 1:I) {
-#>         beta.tmp[i] ~ dnorm(0, var = sigma2_beta)
+#>         beta[i] ~ dnorm(0, var = sigma2_beta)
 #>     }
-#>     beta[1:I] <- beta.tmp[1:I] - mean(beta.tmp[1:I])
 #>     zi[1:N] ~ dCRP(alpha, size = N)
 #>     alpha ~ dgamma(a, b)
 #>     for (j in 1:N) {
@@ -186,7 +188,9 @@ Key design choices:
 
 - **CRP representation**: `dCRP(alpha, size = N)` uses the Chinese
   Restaurant Process to assign each person to a cluster. NIMBLE handles
-  the stick-breaking conversion internally.
+  the partition prior directly; DP-measure weights and atoms are
+  recovered later for density reconstruction through
+  [`getSamplesDPmeasure()`](https://rdrr.io/pkg/nimble/man/getSamplesDPmeasure.html).
 - **Truncation**: `M = 50` clusters (configurable) are pre-allocated.
   The CRP can use fewer but never more.
 - **Dummy monitoring nodes**: `myLogProbAll`, `myLogProbSome`, and
@@ -204,23 +208,24 @@ at package load time.
 
 | Component | Type | Purpose | When_Used |
 |:---|:---|:---|:---|
-| dBernoulliVector | Distribution | Vectorized Bernoulli likelihood for constrained_item identification | constrained_item with 2PL/3PL only |
-| logProb_summer | Sampler | Log-probability monitoring: tracks logProb(all), logProb(params), logLik(data) | Always (all models, all priors) |
-| sampler_centered | Sampler | Joint adaptive MH for correlated (log_lambda, gamma) in SI parameterization | 2PL/3PL with SI parameterization only |
+| dBernoulliVector | Distribution | Vectorized Bernoulli likelihood for constrained_item identification | constrained_item with 2PL only; 3PL constrained_item is rejected |
+| logProb_summer | Sampler | Log-probability monitoring: tracks logProb(all), logProb(params), logLik(data) | By default when log-probability monitoring is enabled |
+| sampler_centered | Sampler | Joint adaptive MH for correlated (log_lambda, gamma) in SI parameterization | 2PL/3PL SI with unconstrained or constrained_ability identification |
 
 Custom NIMBLE components registered by DPMirt. {.table}
 
 ### dBernoulliVector
 
-For `constrained_item` identification in 2PL/3PL models, the likelihood
-for each person’s entire response vector is evaluated jointly:
+For `constrained_item` identification in 2PL models, the likelihood for
+each person’s entire response vector is evaluated jointly:
 
     y[j, 1:I] ~ dBernoulliVector(prob = pi[j, 1:I])
 
 This is necessary because the constraint
 `beta[1:I] <- beta.tmp[1:I] - mean(beta.tmp[1:I])` creates a
 deterministic dependency across all items, requiring a vectorized
-likelihood.
+likelihood. DPMirt currently rejects `constrained_item` for 3PL models;
+use `unconstrained` for 3PL by default.
 
 The density function sums element-wise Bernoulli log-probabilities:
 
@@ -242,16 +247,36 @@ instances are configured:
 | Target node | What it tracks | nodeList |
 |:---|:---|:---|
 | `myLogProbAll` | Total model log-probability | All nodes |
-| `myLogProbSome` | Parameter log-probability | `c("beta", "eta")` or `c("gamma", "lambda", "eta")` |
+| `myLogProbSome` | Parameter log-probability | Rasch: `c("beta", "eta")`; 2PL/3PL IRT: `c("beta", "lambda", "eta")`; SI: `c("gamma", "lambda", "eta")` |
 | `myLogLik` | Data log-likelihood | `"y"` |
 
 The `myLogLik` trace is used for: - Visual convergence checking (trace
-plots). - WAIC computation (when NIMBLE’s built-in WAIC is not
-available).
+plots). - Scalar log-likelihood diagnostics. It is not a pointwise WAIC
+fallback.
+
+For 3PL models, the current `myLogProbSome` node list does not include
+`delta`; 3PL item guessing diagnostics are available through retained
+`delta` draws and item/trace plots rather than this scalar parameter
+trace.
+
+### WAIC Provenance
+
+When WAIC is enabled, DPMirt asks NIMBLE to compute online conditional
+WAIC via `configureMCMC(enableWAIC = TRUE)` and extracts it with
+`Cmcmc$getWAIC()$WAIC`. DPMirt does not currently pass
+`controlWAIC$dataGroups`, so the prediction unit is NIMBLE’s default
+data-node grouping rather than a grouping that aggregates responses by
+person.
+
+For chain-labeled multi-run fits, the top-level WAIC is retained as a
+mean-of-run scalar for compatibility. Before interpreting WAIC
+comparisons, check `dpmirt_diagnostics(fit)$waic_aggregation`; values
+marked `mean_of_chain_waic` are provenance summaries, not native pooled
+posterior WAIC.
 
 ### sampler_centered
 
-The centered sampler is critical for efficient mixing in the
+The centered sampler is intended to improve mixing in the
 slope-intercept (SI) parameterization of 2PL and 3PL models. It
 addresses the strong posterior correlation between $`\log\lambda_i`$ and
 $`\gamma_i`$ by making a joint proposal:
@@ -274,7 +299,11 @@ The centering mean $`\bar\eta`$ is updated each iteration to
 The
 [`dpmirt_compile()`](https://joonho112.github.io/DPMirt/reference/dpmirt_compile.md)
 function automatically enables the centered sampler when
-`use_centered_sampler = "auto"` (the default).
+`use_centered_sampler = "auto"` (the default). In the current
+implementation, the centered sampler is added for SI
+`log_lambda`/`gamma` pairs; inspect `compiled$mcmc_conf$printSamplers()`
+if you need to verify whether default `gamma` samplers also remain in a
+custom configuration.
 
 ## Compile-Once, Sample-Many Pattern
 
@@ -283,18 +312,21 @@ code, compiles it, and loads the resulting shared library. This is the
 most expensive step in the pipeline.
 
 DPMirt separates compilation from sampling, allowing you to compile once
-and then run multiple chains, extend runs, or experiment with different
-MCMC lengths — all without recompiling.
+and then run additional sampling while the compiled object is live.
+Repeated `dpmirt_sample(compiled, ...)` calls reset sample storage by
+default; use `reset = FALSE` or
+[`dpmirt_resume()`](https://joonho112.github.io/DPMirt/reference/dpmirt_resume.md)
+to extend the same compiled MCMC state. For a pooled chain-labeled
+one-step fit, use `dpmirt(..., nchains = k)`.
 
 ### Architecture
 
     dpmirt_spec()  ──>  dpmirt_compile()  ──>  dpmirt_sample()
       [< 1 sec]        [30-120 sec]           [10-60 sec per call]
                              │
-                             ├── dpmirt_sample(seed = 1)
-                             ├── dpmirt_sample(seed = 2)
-                             ├── dpmirt_sample(seed = 3)
-                             └── dpmirt_sample(seed = 4)
+                             ├── dpmirt_sample(reset = TRUE)   # fresh storage
+                             ├── dpmirt_sample(reset = FALSE)  # append/continue
+                             └── dpmirt_resume(...)            # preferred resume
 
 ### Timing Table
 
@@ -318,18 +350,19 @@ spec <- dpmirt_spec(sim$response, model = "rasch", prior = "dpm")
 # Step 2: Compilation (expensive --- do this once)
 compiled <- dpmirt_compile(spec, verbose = TRUE)
 
-# Step 3: Multiple chains (fast --- reuse compiled object)
-chains <- lapply(1:4, function(i) {
-  dpmirt_sample(compiled, niter = 10000, nburnin = 2000, seed = i)
-})
+# Step 3: First sampling run
+samples <- dpmirt_sample(compiled, niter = 10000, nburnin = 2000, seed = 1)
 
-# Step 4: Chain continuation (extend without recompiling)
-# Option A: low-level via dpmirt_sample with reset = FALSE
-extended <- dpmirt_sample(compiled, niter = 5000, nburnin = 0,
-                           reset = FALSE)
+# Step 4: Continue from the live compiled MCMC state without recompiling
+more_samples <- dpmirt_sample(compiled, niter = 5000, nburnin = 0,
+                              reset = FALSE)
 
-# Option B: higher-level via dpmirt_resume (preferred)
-# extended <- dpmirt_resume(compiled, niter = 5000)
+# Higher-level continuation keeps thinning metadata and run provenance
+resumed_samples <- dpmirt_resume(more_samples, niter_more = 5000,
+                                 reset = FALSE)
+
+# Rescale after sampling/resume
+fit <- dpmirt_rescale(resumed_samples)
 ```
 
 ### Custom Sampler Configuration
@@ -337,6 +370,9 @@ extended <- dpmirt_sample(compiled, niter = 5000, nburnin = 0,
 For advanced users,
 [`dpmirt_compile()`](https://joonho112.github.io/DPMirt/reference/dpmirt_compile.md)
 accepts a custom sampler configuration function:
+
+Only function-valued hooks are currently supported. List-based sampler
+schemas are reserved for a future release.
 
 ``` r
 
@@ -360,6 +396,10 @@ my_config <- function(conf, model, spec) {
 
 compiled <- dpmirt_compile(spec, sampler_config = my_config)
 ```
+
+The hook must return a NIMBLE `MCMCconf` object or `NULL`, and it must
+preserve DPMirt’s required monitors and log-probability samplers.
+List-based sampler schemas are intentionally reserved.
 
 > **Serialization caveat:** Compiled NIMBLE objects contain external C++
 > pointers that **cannot be serialized** across R sessions. If you call
@@ -406,8 +446,10 @@ compiled$mcmc_conf$printSamplers()
 
 IRT models have identification indeterminacy: without constraints, the
 likelihood is invariant to certain transformations of the parameters.
-DPMirt’s default approach is to leave the model unconstrained during
-MCMC and apply rescaling to the posterior samples afterwards.
+DPMirt’s default is model-specific: Rasch defaults to
+`constrained_item`, while 2PL and 3PL default to `unconstrained`. When
+the model is fitted with `identification = "unconstrained"`, DPMirt
+applies rescaling to the posterior samples afterwards.
 
 ### Rasch: Location Shift Only
 
@@ -510,16 +552,23 @@ where $`\phi(x; \mu, \sigma^2)`$ is the Normal density.
 
 ### Rescaling Adjustment
 
-For unconstrained models, the DP density is on the raw (unrescaled)
-scale. To evaluate it on the rescaled theta scale, the grid is shifted
-by the iteration-specific location shift:
+For unconstrained Rasch models, the DP density is initially on the raw
+(unrescaled) scale. To evaluate it on the rescaled theta scale, the
+current implementation shifts the grid by the iteration-specific
+location shift:
 
 ``` math
 \hat{f}_{\text{rescaled}}(x) = f_s(x + \text{location}_s)
 ```
 
 The Jacobian is 1 for a location shift, so no density adjustment is
-needed.
+needed. For 2PL/3PL IRT and SI parameterizations, a full
+transformed-scale density would also require scale/Jacobian handling:
+$`d_s f_{\text{raw}}(d_s x + c_s)`$ for IRT and
+$`d_s f_{\text{raw}}(d_s x - c_s)`$ for SI. DPMirt currently applies the
+location-shift contract only, so DP-density plots for transformed-scale
+2PL/3PL fits should be treated as diagnostic rather than definitive
+density estimates.
 
 ### Using `dpmirt_dp_density()`
 
@@ -569,13 +618,18 @@ legend("topright",
 
 > **Note on computation cost:**
 > [`dpmirt_dp_density()`](https://joonho112.github.io/DPMirt/reference/dpmirt_dp_density.md)
-> internally rebuilds and recompiles a NIMBLE model to call
+> internally rebuilds a NIMBLE model/MCMC, loads retained DP draws
+> through public `modelValues` accessors, and calls
 > [`getSamplesDPmeasure()`](https://rdrr.io/pkg/nimble/man/getSamplesDPmeasure.html).
-> This adds 30–60 seconds. The
+> The
 > [`dpmirt()`](https://joonho112.github.io/DPMirt/reference/dpmirt.md)
 > function runs this automatically when `compute_dp_density = TRUE` (the
 > default for DPM models). If you want to skip it, set
 > `compute_dp_density = FALSE` and call `dpmirt_dp_density(fit)` later.
+> Manual recomputation requires the live model specification retained
+> with the compiled model reference; saved compact RDS fixtures can
+> carry a precomputed compact `dp_density`, but cannot resurrect expired
+> compiled C++ pointers.
 
 ## MCMC Pipeline Internals
 
@@ -600,7 +654,8 @@ final `dpmirt_fit` object:
       |-- compileNimble()    --> Cmodel, Cmcmc
       v
     dpmirt_sample()
-      |-- runMCMC()          --> samples (niter x params), samples2 (niter x N)
+      |-- runMCMC()          --> retained samples (draws x params),
+      |                          retained samples2 (draws x N)
       v
     dpmirt_rescale()
       |-- .rescale_rasch()   or .rescale_irt() or .rescale_si()
@@ -722,9 +777,9 @@ samples2 <- as.matrix(Cmcmc$mvSamples2)
 |:---|:---|:---|
 | “Compiled model is no longer valid” | Serialized/loaded compiled object | Recompile from spec |
 | Very slow compilation (\> 5 min) | Large N or I | Expected; reduce M for DPM |
-| Poor mixing for alpha | Tight Gamma prior | Use wider prior or DP-diffuse |
+| Poor mixing for alpha | Tight Gamma prior or weak cluster signal | Use a broader prior, DPprior low confidence, or a longer run |
 | All persons in one cluster | alpha too small | Increase mu_K or use “low” confidence |
-| WAIC computation failed | NIMBLE version mismatch | Update nimble; use compute_waic=FALSE |
+| WAIC unavailable | WAIC disabled or NIMBLE online WAIC unavailable | Use `compute_waic = FALSE` intentionally or inspect WAIC provenance |
 
 ### Checking Sampler Configuration
 
@@ -743,11 +798,11 @@ table(sampler_types)
 
 ## What’s Next?
 
-| Vignette            | Why read it                                          |
-|:--------------------|:-----------------------------------------------------|
-| *Quick Start*       | End-to-end pipeline without worrying about internals |
-| *Prior Elicitation* | Principled $`\alpha`$ choice via DPprior             |
-| *Simulation Study*  | Full factorial comparison of methods and priors      |
+| Vignette | Why read it |
+|:---|:---|
+| [Quick Start](https://joonho112.github.io/DPMirt/articles/quick-start.md) | End-to-end pipeline without worrying about internals |
+| [Prior Elicitation](https://joonho112.github.io/DPMirt/articles/prior-elicitation.md) | Optional DPprior calibration of $`\alpha`$ and Gamma(1,3) fallback |
+| [Simulation Study](https://joonho112.github.io/DPMirt/articles/simulation-study.md) | Full factorial comparison of methods and priors |
 
 ## References
 
@@ -762,6 +817,6 @@ performance with Bayesian semiparametric item response theory models.
 *Journal of Educational and Behavioral Statistics*, 48(2), 147–188.
 <https://doi.org/10.3102/10769986221136105>
 
-NIMBLE Development Team. (2024). NIMBLE: MCMC, particle filtering, and
-programmable hierarchical modeling. R package version 1.2.1.
+NIMBLE Development Team. (n.d.). NIMBLE: MCMC, particle filtering, and
+programmable hierarchical modeling. R package version 1.4.2.
 <https://r-nimble.org>

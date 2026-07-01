@@ -136,8 +136,14 @@ test_that("dpmirt_rescale passes through when rescale=FALSE", {
   samp <- .mock_samples_rasch()
 
   result <- dpmirt_rescale(samp, rescale = FALSE)
+  beta_cols <- grep("^beta\\[", colnames(samp$samples))
+  eta_cols <- grep("^eta\\[", colnames(samp$samples2))
+
   expect_true(all(result$location_shift == 0))
   expect_true(all(result$scale_shift == 1))
+  expect_equal(result$beta_samp, samp$samples[, beta_cols, drop = FALSE])
+  expect_equal(result$theta_samp, samp$samples2[, eta_cols, drop = FALSE])
+  expect_false(result$config$rescale)
 })
 
 
@@ -393,8 +399,67 @@ test_that(".extract_delta_samp extracts delta columns when present", {
 
 
 # ============================================================================
+# 3PL rescaling edge cases
+# ============================================================================
+
+test_that(".rescale_irt preserves 3PL delta draws unchanged", {
+  set.seed(42)
+  samp <- .mock_samples_2pl(niter = 50)
+  I <- samp$model_config$I
+
+  delta_samp <- matrix(rbeta(50 * I, 4, 12), nrow = 50, ncol = I)
+  colnames(delta_samp) <- paste0("delta[", seq_len(I), "]")
+
+  samp$samples <- cbind(samp$samples, delta_samp)
+  samp$model_config$model <- "3pl"
+
+  result <- DPMirt:::.rescale_irt(samp)
+
+  expect_equal(dim(result$delta_samp), dim(delta_samp))
+  expect_equal(as.vector(result$delta_samp), as.vector(delta_samp))
+})
+
+
+test_that(".rescale_si preserves 3PL delta draws unchanged", {
+  set.seed(42)
+  samp <- .mock_samples_si(niter = 50)
+  I <- samp$model_config$I
+
+  delta_samp <- matrix(rbeta(50 * I, 4, 12), nrow = 50, ncol = I)
+  colnames(delta_samp) <- paste0("delta[", seq_len(I), "]")
+
+  samp$samples <- cbind(samp$samples, delta_samp)
+  samp$model_config$model <- "3pl"
+
+  result <- DPMirt:::.rescale_si(samp)
+
+  expect_equal(dim(result$delta_samp), dim(delta_samp))
+  expect_equal(as.vector(result$delta_samp), as.vector(delta_samp))
+})
+
+
+# ============================================================================
 # Thinning alignment
 # ============================================================================
+
+.attach_draw_index <- function(samp, main_iters, theta_iters) {
+  samp$draw_index <- list(
+    main = data.frame(
+      row = seq_along(main_iters),
+      chain_id = rep(1L, length(main_iters)),
+      within_chain_draw = seq_along(main_iters),
+      mcmc_iteration = as.integer(main_iters)
+    ),
+    theta = data.frame(
+      row = seq_along(theta_iters),
+      chain_id = rep(1L, length(theta_iters)),
+      within_chain_draw = seq_along(theta_iters),
+      mcmc_iteration = as.integer(theta_iters)
+    )
+  )
+  samp
+}
+
 
 test_that(".rescale_rasch handles different thinning rates", {
   samp <- .mock_samples_rasch(niter = 200)
@@ -411,6 +476,167 @@ test_that(".rescale_rasch handles different thinning rates", {
 })
 
 
+test_that(".rescale_irt aligns integer-ratio theta thinning to main draws", {
+  samp <- .mock_samples_2pl(niter = 4, seed = 123)
+
+  eta_cols <- grep("^eta\\[", colnames(samp$samples2))
+  theta_main_rows <- c(2L, 4L)
+  theta_raw <- samp$samples2[theta_main_rows, eta_cols, drop = FALSE]
+  samp$samples2 <- theta_raw
+  samp <- .attach_draw_index(samp, main_iters = 1:4, theta_iters = c(2L, 4L))
+
+  result <- DPMirt:::.rescale_irt(samp)
+  expected_theta <- (theta_raw - result$location_shift[theta_main_rows]) /
+    result$scale_shift[theta_main_rows]
+
+  expect_equal(nrow(result$theta_samp), 2)
+  expect_equal(as.vector(result$theta_samp), as.vector(expected_theta),
+               tolerance = 1e-10)
+})
+
+
+test_that(".rescale_rasch aligns theta shifts by mcmc iteration metadata", {
+  samp <- .mock_samples_rasch(niter = 6, seed = 123)
+  main_iters <- c(12, 14, 16, 18, 20, 22)
+  theta_rows <- c(2L, 4L, 6L)
+  theta_iters <- main_iters[theta_rows]
+
+  eta_cols <- grep("^eta\\[", colnames(samp$samples2))
+  theta_raw <- samp$samples2[theta_rows, eta_cols, drop = FALSE]
+  samp$samples2 <- theta_raw
+  samp <- .attach_draw_index(samp, main_iters, theta_iters)
+
+  result <- DPMirt:::.rescale_rasch(samp)
+  expected_theta <- theta_raw - result$location_shift[theta_rows]
+
+  expect_equal(as.vector(result$theta_samp), as.vector(expected_theta),
+               tolerance = 1e-10)
+})
+
+
+test_that(".rescale_irt aligns theta shifts by mcmc iteration metadata", {
+  samp <- .mock_samples_2pl(niter = 6, seed = 123)
+  main_iters <- c(12, 14, 16, 18, 20, 22)
+  theta_rows <- c(2L, 4L, 6L)
+  theta_iters <- main_iters[theta_rows]
+
+  eta_cols <- grep("^eta\\[", colnames(samp$samples2))
+  theta_raw <- samp$samples2[theta_rows, eta_cols, drop = FALSE]
+  samp$samples2 <- theta_raw
+  samp <- .attach_draw_index(samp, main_iters, theta_iters)
+
+  result <- DPMirt:::.rescale_irt(samp)
+  expected_theta <- (theta_raw - result$location_shift[theta_rows]) /
+    result$scale_shift[theta_rows]
+
+  expect_equal(as.vector(result$theta_samp), as.vector(expected_theta),
+               tolerance = 1e-10)
+})
+
+
+test_that(".rescale_irt aligns theta shifts by chain and mcmc iteration", {
+  samp <- .mock_samples_2pl(niter = 4, seed = 123)
+  main_iters <- c(1L, 2L, 1L, 2L)
+  theta_rows <- c(3L, 4L)
+
+  eta_cols <- grep("^eta\\[", colnames(samp$samples2))
+  theta_raw <- samp$samples2[theta_rows, eta_cols, drop = FALSE]
+  samp$samples2 <- theta_raw
+  samp$draw_index <- list(
+    main = data.frame(
+      row = 1:4,
+      chain_id = c(1L, 1L, 2L, 2L),
+      within_chain_draw = c(1L, 2L, 1L, 2L),
+      mcmc_iteration = main_iters
+    ),
+    theta = data.frame(
+      row = 1:2,
+      chain_id = c(2L, 2L),
+      within_chain_draw = 1:2,
+      mcmc_iteration = c(1L, 2L)
+    )
+  )
+
+  result <- DPMirt:::.rescale_irt(samp)
+  expected_theta <- (theta_raw - result$location_shift[theta_rows]) /
+    result$scale_shift[theta_rows]
+
+  expect_equal(as.vector(result$theta_samp), as.vector(expected_theta),
+               tolerance = 1e-10)
+})
+
+
+test_that(".rescale_si aligns theta shifts by mcmc iteration metadata", {
+  samp <- .mock_samples_si(niter = 6, seed = 123)
+  main_iters <- c(12, 14, 16, 18, 20, 22)
+  theta_rows <- c(2L, 4L, 6L)
+  theta_iters <- main_iters[theta_rows]
+
+  eta_cols <- grep("^eta\\[", colnames(samp$samples2))
+  theta_raw <- samp$samples2[theta_rows, eta_cols, drop = FALSE]
+  samp$samples2 <- theta_raw
+  samp <- .attach_draw_index(samp, main_iters, theta_iters)
+
+  result <- DPMirt:::.rescale_si(samp)
+  expected_theta <- (theta_raw + result$location_shift[theta_rows]) /
+    result$scale_shift[theta_rows]
+
+  expect_equal(as.vector(result$theta_samp), as.vector(expected_theta),
+               tolerance = 1e-10)
+})
+
+
+test_that("rescaling errors when theta iterations are not in main monitors", {
+  samp <- .mock_samples_2pl(niter = 6, seed = 123)
+  main_iters <- c(12, 14, 16, 18, 20, 22)
+  theta_iters <- c(15, 19, 23)
+
+  samp$samples2 <- samp$samples2[1:3, , drop = FALSE]
+  samp <- .attach_draw_index(samp, main_iters, theta_iters)
+
+  expect_error(
+    DPMirt:::.rescale_irt(samp),
+    "Cannot align theta draws"
+  )
+})
+
+
+test_that("rescaling errors on duplicate main chain/iteration keys", {
+  samp <- .mock_samples_2pl(niter = 4, seed = 123)
+  samp$samples2 <- samp$samples2[1:2, , drop = FALSE]
+  samp$draw_index <- list(
+    main = data.frame(
+      row = 1:4,
+      chain_id = c(1L, 1L, 1L, 1L),
+      within_chain_draw = 1:4,
+      mcmc_iteration = c(1L, 2L, 2L, 4L)
+    ),
+    theta = data.frame(
+      row = 1:2,
+      chain_id = c(1L, 1L),
+      within_chain_draw = 1:2,
+      mcmc_iteration = c(2L, 4L)
+    )
+  )
+
+  expect_error(
+    DPMirt:::.rescale_irt(samp),
+    "duplicate main draw"
+  )
+})
+
+
+test_that("rescaling errors for unsupported non-integer thinning without metadata", {
+  samp <- .mock_samples_2pl(niter = 5, seed = 123)
+  samp$samples2 <- samp$samples2[1:2, , drop = FALSE]
+
+  expect_error(
+    DPMirt:::.rescale_irt(samp),
+    "Cannot align theta draws"
+  )
+})
+
+
 # ============================================================================
 # dpmirt_rescale() returns dpmirt_fit (pipeline integration)
 # ============================================================================
@@ -424,6 +650,7 @@ test_that("dpmirt_rescale returns dpmirt_fit class", {
 
 test_that("dpmirt_rescale result has all dpmirt_fit fields", {
   samp <- .mock_samples_rasch()
+  samp$waic <- 123.45
   result <- dpmirt_rescale(samp)
 
   # Core samples
@@ -432,10 +659,31 @@ test_that("dpmirt_rescale result has all dpmirt_fit fields", {
   expect_true(!is.null(result$beta_samp))
   expect_true(!is.null(result$scale_shift))
   expect_true(!is.null(result$location_shift))
+  expect_identical(result$samples_raw, samp$samples)
+  expect_identical(result$samples2_raw, samp$samples2)
+  expect_equal(result$schema_version, "chain-aware-v1")
+  expect_equal(result$chain_info$chain_id, 1L)
+  expect_equal(result$run_history$chain_id, 1L)
+  expect_equal(nrow(result$draw_index$main), nrow(samp$samples))
+  expect_equal(nrow(result$draw_index$theta), nrow(samp$samples2))
 
   # Diagnostics
   expect_true(!is.null(result$ess))
+  expect_identical(result$diagnostics$ess$pooled, result$ess)
+  expect_null(result$diagnostics$rhat)
   expect_true(is.list(result$ess))
+  expect_equal(result$waic, 123.45)
+  expect_equal(result$diagnostics$waic$value, 123.45)
+  expect_equal(result$diagnostics$waic$aggregation, "single_chain")
+  expect_equal(result$diagnostics$waic$by_chain$waic, 123.45)
+  expect_length(result$ess$items, samp$model_config$I)
+  expect_length(result$ess$theta, samp$model_config$N)
+  expect_named(result$ess$items, colnames(result$beta_samp))
+  expect_named(result$ess$theta, colnames(result$theta_samp))
+  expect_true(all(is.finite(result$ess$items)))
+  expect_true(all(is.finite(result$ess$theta)))
+  expect_true(all(result$ess$items >= 0))
+  expect_true(all(result$ess$theta >= 0))
 
   # Configuration
   expect_true(!is.null(result$config))
@@ -449,7 +697,7 @@ test_that("dpmirt_rescale result works with dpmirt_estimates", {
   samp <- .mock_samples_rasch()
   fit <- dpmirt_rescale(samp)
 
-  est <- dpmirt_estimates(fit, methods = c("pm", "cb", "gr"))
+  est <- suppressWarnings(dpmirt_estimates(fit, methods = c("pm", "cb", "gr")))
   expect_s3_class(est, "dpmirt_estimates")
   expect_true("theta_pm" %in% names(est$theta))
   expect_true("theta_cb" %in% names(est$theta))
@@ -461,7 +709,7 @@ test_that("step-by-step pipeline: rescale -> estimates -> loss", {
   samp <- .mock_samples_rasch(N = 50, I = 10, niter = 200)
   fit <- dpmirt_rescale(samp)
 
-  est <- dpmirt_estimates(fit, methods = c("pm", "cb", "gr"))
+  est <- suppressWarnings(dpmirt_estimates(fit, methods = c("pm", "cb", "gr")))
   true_theta <- rnorm(50)
 
   loss <- dpmirt_loss(est, true_theta = true_theta, metrics = c("msel", "ks"))

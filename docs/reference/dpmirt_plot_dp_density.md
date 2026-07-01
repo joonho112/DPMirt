@@ -28,6 +28,14 @@ dpmirt_plot_dp_density(fit, ...)
 
 A `ggplot` object.
 
+## Details
+
+For 2PL/3PL IRT and SI parameterizations, transformed-scale DP density
+reconstruction currently uses the same location-shift contract as
+[`dpmirt_dp_density`](https://joonho112.github.io/DPMirt/reference/dpmirt_dp_density.md).
+Treat these plots as diagnostic summaries; Rasch/location-shift settings
+are the most directly interpretable.
+
 ## See also
 
 [`dpmirt_dp_density`](https://joonho112.github.io/DPMirt/reference/dpmirt_dp_density.md),

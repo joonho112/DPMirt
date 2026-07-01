@@ -39,17 +39,34 @@
 #'   \code{mu_K} is set.
 #' @param base_measure List of DPM base measure hyperparameters.
 #' @param M Integer. Max clusters for CRP. Default 50.
-#' @param item_priors List of custom item priors.
+#' @param item_priors Reserved. Custom item-prior schemas are not currently
+#'   implemented. Use \code{NULL} or \code{list()} to use DPMirt's fixed item
+#'   priors.
 #' @param rescale Logical. Apply post-hoc rescaling. Default TRUE.
 #' @param compute_waic Logical. Compute WAIC. Default TRUE.
 #' @param compute_dp_density Logical. Compute DP density. Default TRUE for DPM.
-#' @param save_draws Logical. Save full theta posterior. Default TRUE.
-#' @param save_path Character or NULL. Path for disk-backed storage.
-#' @param sampler_config Optional custom sampler configuration.
+#' @param save_draws Reserved. DPMirt currently always retains posterior draw
+#'   matrices in the returned \code{dpmirt_fit} object. Only \code{TRUE} is
+#'   supported.
+#' @param save_path Reserved. Disk-backed draw storage is not currently
+#'   implemented. Only \code{NULL} is supported.
+#' @param sampler_config Optional advanced hook for NIMBLE sampler
+#'   customization. Must be \code{NULL} or a function with signature
+#'   \code{function(conf, model, spec)}. List-based sampler configuration is
+#'   reserved but not implemented.
 #' @param verbose Logical. Print progress. Default TRUE.
 #' @param ... Additional arguments.
 #'
 #' @return A \code{dpmirt_fit} S3 object.
+#'
+#' @details
+#' A \code{dpmirt_fit} is currently an in-memory, draw-retaining object. The
+#' stored posterior draws are required by \code{dpmirt_estimates()},
+#' \code{dpmirt_draws()}, \code{summary()}, \code{coef()}, diagnostics, and
+#' plotting helpers. The object also preserves chain/run provenance through
+#' \code{schema_version}, \code{chain_info}, \code{draw_index}, and
+#' \code{run_history}. Disk-backed draw storage is reserved for a future
+#' release.
 #'
 #' @examples
 #' \dontrun{
@@ -124,6 +141,19 @@ dpmirt <- function(data,
   model <- match.arg(model)
   prior <- match.arg(prior)
   parameterization <- match.arg(parameterization)
+  .validate_draw_storage_args(save_draws, save_path)
+  control <- .validate_mcmc_control_args(
+    niter = niter,
+    nburnin = nburnin,
+    thin = thin,
+    thin2 = thin2,
+    nchains = nchains
+  )
+  niter <- control$niter
+  nburnin <- control$nburnin
+  thin <- control$thin
+  thin2 <- control$thin2
+  nchains <- control$nchains
 
   .vmsg("=== DPMirt: Fitting ", toupper(model), " model with ",
         prior, " prior ===", verbose = verbose)
@@ -171,6 +201,8 @@ dpmirt <- function(data,
   .vmsg("\n[3/4] Running MCMC...", verbose = verbose)
 
   if (nchains == 1) {
+    init <- .chain_initial_values(spec, chain_id = 1L,
+                                  seed = seed, nchains = nchains)
     samples_obj <- dpmirt_sample(
       compiled = compiled,
       niter    = niter,
@@ -178,14 +210,20 @@ dpmirt <- function(data,
       thin     = thin,
       thin2    = thin2,
       seed     = seed,
-      verbose  = verbose
+      verbose  = verbose,
+      inits    = init$inits,
+      init_seed = init$init_seed,
+      init_strategy = init$init_strategy
     )
+    samples_obj <- .add_chain_metadata(samples_obj, chain_id = 1L, seed = seed)
     all_samples <- list(samples_obj)
   } else {
     # Multiple chains
     all_samples <- vector("list", nchains)
     for (ch in seq_len(nchains)) {
-      ch_seed <- if (!is.null(seed)) seed + ch - 1 else NULL
+      ch_seed <- .chain_seed(seed, ch)
+      init <- .chain_initial_values(spec, chain_id = ch,
+                                    seed = seed, nchains = nchains)
       .vmsg("  Chain ", ch, "/", nchains, "...", verbose = verbose)
       all_samples[[ch]] <- dpmirt_sample(
         compiled = compiled,
@@ -194,7 +232,15 @@ dpmirt <- function(data,
         thin     = thin,
         thin2    = thin2,
         seed     = ch_seed,
-        verbose  = FALSE
+        verbose  = FALSE,
+        inits    = init$inits,
+        init_seed = init$init_seed,
+        init_strategy = init$init_strategy
+      )
+      all_samples[[ch]] <- .add_chain_metadata(
+        all_samples[[ch]],
+        chain_id = ch,
+        seed = ch_seed
       )
     }
   }
@@ -210,6 +256,9 @@ dpmirt <- function(data,
     waic_val <- primary_samples$waic
     loglik_trace <- .extract_loglik_trace(primary_samples$samples)
     raw_samples <- primary_samples$samples
+    chain_info <- primary_samples$chain_info
+    draw_index <- primary_samples$draw_index
+    run_history <- primary_samples$run_history
     sampling_time_total <- primary_samples$sampling_time
   } else {
     .vmsg("  Combining ", nchains, " chains...", verbose = verbose)
@@ -218,6 +267,9 @@ dpmirt <- function(data,
     waic_val        <- combined$waic
     loglik_trace    <- combined$loglik_trace
     raw_samples     <- combined$raw_samples
+    chain_info      <- combined$chain_info
+    draw_index      <- combined$draw_index
+    run_history     <- combined$run_history
     sampling_time_total <- combined$sampling_time
   }
 
@@ -231,17 +283,42 @@ dpmirt <- function(data,
     cluster_info <- .extract_cluster_info(raw_samples, spec$config$N)
   }
 
+  chain_diagnostics <- .build_chain_diagnostics(
+    ess = ess,
+    waic = waic_val,
+    loglik_trace = loglik_trace,
+    cluster_info = cluster_info,
+    chain_info = chain_info,
+    draw_index = draw_index,
+    draws = list(
+      items = rescaled$beta_samp,
+      theta = rescaled$theta_samp,
+      lambda = rescaled$lambda_samp,
+      delta = rescaled$delta_samp
+    )
+  )
+
   # --- Build fit object ---
   total_time <- .elapsed_time(total_timer)
 
   fit <- structure(
     list(
+      # Schema
+      schema_version = .schema_version(),
+      chain_info     = chain_info,
+      draw_index     = draw_index,
+      run_history    = run_history,
+
       # Core results
       theta_samp     = rescaled$theta_samp,
       beta_samp      = rescaled$beta_samp,
       lambda_samp    = rescaled$lambda_samp,
       delta_samp     = rescaled$delta_samp,
       other_samp     = rescaled$other_samp,
+
+      # Raw sample provenance
+      samples_raw    = rescaled$samples_raw,
+      samples2_raw   = rescaled$samples2_raw,
 
       # Rescaling info
       scale_shift    = rescaled$scale_shift,
@@ -256,6 +333,7 @@ dpmirt <- function(data,
 
       # Diagnostics
       ess            = ess,
+      diagnostics    = chain_diagnostics,
       loglik_trace   = loglik_trace,
 
       # Timings
@@ -283,7 +361,9 @@ dpmirt <- function(data,
         N                = spec$config$N,
         I                = spec$config$I,
         seed             = seed,
-        rescale          = rescale
+        rescale          = rescale,
+        save_draws       = save_draws,
+        save_path        = save_path
       )
     ),
     class = "dpmirt_fit"
@@ -317,6 +397,29 @@ dpmirt <- function(data,
 # ============================================================================
 # Internal Helpers for dpmirt()
 # ============================================================================
+
+#' Validate current draw-storage argument contract
+#' @noRd
+.validate_draw_storage_args <- function(save_draws, save_path) {
+  if (!isTRUE(save_draws)) {
+    stop(
+      "save_draws is reserved; only save_draws = TRUE is currently supported. ",
+      "DPMirt currently requires in-memory posterior draws.",
+      call. = FALSE
+    )
+  }
+
+  if (!is.null(save_path)) {
+    stop(
+      "save_path is reserved; disk-backed draw storage is not currently ",
+      "implemented. Use save_path = NULL.",
+      call. = FALSE
+    )
+  }
+
+  invisible(TRUE)
+}
+
 
 #' Compute effective sample sizes for key parameters
 #' @noRd
@@ -355,6 +458,27 @@ dpmirt <- function(data,
 }
 
 
+#' Prepare chain-specific initial values and provenance
+#' @noRd
+.chain_initial_values <- function(spec, chain_id = 1L, seed = NULL,
+                                  nchains = 1L) {
+  if (as.integer(nchains) <= 1L && is.null(seed)) {
+    return(list(
+      inits = NULL,
+      init_seed = NULL,
+      init_strategy = "compiled_spec"
+    ))
+  }
+
+  init_seed <- .chain_seed(seed, chain_id)
+  list(
+    inits = .generate_chain_inits(spec, chain_id = chain_id, seed = seed),
+    init_seed = init_seed,
+    init_strategy = if (is.null(init_seed)) "chain_random" else "chain_seeded"
+  )
+}
+
+
 #' Extract log-likelihood trace from samples
 #' @noRd
 .extract_loglik_trace <- function(samples) {
@@ -379,6 +503,7 @@ dpmirt <- function(data,
 .combine_chains <- function(all_samples, rescale = TRUE) {
 
   nchains <- length(all_samples)
+  chain_meta <- .combine_chain_metadata(all_samples)
 
   # Rescale each chain independently
   rescaled_list <- lapply(all_samples, dpmirt_rescale, rescale = rescale)
@@ -408,9 +533,12 @@ dpmirt <- function(data,
   combined_scale    <- unlist(lapply(rescaled_list, `[[`, "scale_shift"))
   combined_location <- unlist(lapply(rescaled_list, `[[`, "location_shift"))
 
-  # Aggregate WAIC: use mean across chains (each chain provides one WAIC)
-  waic_vals <- sapply(all_samples, function(s) s$waic)
-  waic_val  <- if (all(is.null(waic_vals))) NULL else mean(unlist(waic_vals), na.rm = TRUE)
+  # Aggregate WAIC: keep the historical mean-of-run scalar for compatibility.
+  # Diagnostics records this as provenance, not as a pooled posterior WAIC.
+  waic_vals <- unlist(lapply(all_samples, function(s) s$waic), use.names = FALSE)
+  waic_vals <- as.numeric(waic_vals)
+  waic_vals <- waic_vals[is.finite(waic_vals)]
+  waic_val <- if (length(waic_vals) == 0L) NULL else mean(waic_vals)
 
   # Concatenate log-likelihood traces
   loglik_traces <- lapply(all_samples, function(s) {
@@ -444,6 +572,9 @@ dpmirt <- function(data,
     waic          = waic_val,
     loglik_trace  = loglik_trace,
     raw_samples   = raw_samples,
+    chain_info    = chain_meta$chain_info,
+    draw_index    = chain_meta$draw_index,
+    run_history   = chain_meta$run_history,
     sampling_time = sampling_time
   )
 }

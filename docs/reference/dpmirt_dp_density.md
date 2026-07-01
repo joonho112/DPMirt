@@ -1,9 +1,10 @@
 # Compute posterior density of the DP mixture
 
 Samples from the posterior Dirichlet Process mixing distribution using
-NIMBLE's `getSamplesDPmeasure()` and evaluates the resulting mixture
-density on a grid. The density is computed by summing weighted Normal
-components from the DP base measure.
+NIMBLE's
+[`getSamplesDPmeasure()`](https://rdrr.io/pkg/nimble/man/getSamplesDPmeasure.html)
+and evaluates the resulting mixture density on a grid. The density is
+computed by summing weighted Normal components from the DP base measure.
 
 ## Usage
 
@@ -39,9 +40,9 @@ print(x, ...)
 
 - apply_rescaling:
 
-  Logical. If TRUE (default), shift the grid by the iteration-specific
-  location shift from post-hoc rescaling. Only relevant for
-  unconstrained models.
+  Logical. If TRUE (default), shift the grid by the
+  retained-draw-specific location shift from post-hoc rescaling. Only
+  changes output for unconstrained Rasch/location-shift fits.
 
 - verbose:
 
@@ -77,13 +78,14 @@ A list of class `dpmirt_dp_density` containing:
 
 - density_samples:
 
-  Matrix (niter x length(grid)) of per-iteration densities (for custom
-  summaries).
+  Matrix (`n_retained_draws` x `length(grid)`) of per-retained-draw
+  densities (for custom summaries).
 
 - dp_samples:
 
-  List from `getSamplesDPmeasure()` – each element is a matrix with
-  columns (weights, means, variances).
+  List from
+  [`getSamplesDPmeasure()`](https://rdrr.io/pkg/nimble/man/getSamplesDPmeasure.html)
+  – each element is a matrix with columns (weights, means, variances).
 
 - ci_level:
 
@@ -96,14 +98,15 @@ This function follows Paganin et al.'s (2023) workflow:
 1.  Extract posterior samples for DP parameters (alpha, zi, muTilde,
     s2Tilde) from the fitted model.
 
-2.  Reconstruct a NIMBLE model and compiled MCMC with monitors set to
-    only DP parameters.
+2.  Reconstruct a NIMBLE model and MCMC with monitors set to only DP
+    parameters.
 
-3.  Populate the compiled MCMC's sample storage with the posterior
-    samples using `nimble:::matrix2mv()`.
+3.  Populate the MCMC's sample storage with the posterior samples using
+    NIMBLE modelValues accessors.
 
-4.  Call `getSamplesDPmeasure()` to compute stick-breaking weights and
-    atoms for each posterior draw.
+4.  Call
+    [`getSamplesDPmeasure()`](https://rdrr.io/pkg/nimble/man/getSamplesDPmeasure.html)
+    to compute stick-breaking weights and atoms for each posterior draw.
 
 5.  Evaluate the mixture density
     `f(x|Gs) = sum_k w_k * phi(x; mu_k, s2_k)` for each posterior sample
@@ -111,7 +114,12 @@ This function follows Paganin et al.'s (2023) workflow:
 
 For Rasch models with unconstrained identification, a location shift
 (mean(beta) per iteration) is applied so the density is on the rescaled
-theta scale.
+theta scale. For 2PL/3PL IRT and SI parameterizations, full
+transformed-scale density reconstruction would also require scale and
+Jacobian adjustments. The current implementation applies the
+Rasch/location-shift contract, so DP densities for transformed-scale
+2PL/3PL fits should be treated as diagnostic summaries rather than
+definitive latent-density estimates.
 
 ## See also
 

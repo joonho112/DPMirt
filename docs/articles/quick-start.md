@@ -15,16 +15,19 @@ finish. By the end you will know how to:
     constrained Bayes (CB), and triple-goal (GR) estimators.
 
 No NIMBLE compilation is required for the simulation or estimation steps
-shown here — we load pre-computed MCMC results so you can follow along
-instantly.
+shown here — we load compact pre-computed fixtures with thinned
+posterior draws so you can follow along instantly.
 
 ## Simulate Data
 
 [`dpmirt_simulate()`](https://joonho112.github.io/DPMirt/reference/dpmirt_simulate.md)
 generates binary response data under a known IRT model. When the
-optional **IRTsimrel** package is installed, it uses Empirical
-Quadrature Calibration (EQC) to hit a target marginal reliability;
-otherwise it falls back to a Paganin-style simulation.
+optional **IRTsimrel** package is installed, it uses IRTsimrel
+calibration (EQC by default, SAC for MSEM targets) to hit a target
+marginal reliability for Rasch and 2PL simulations; otherwise it falls
+back to a Paganin-style simulation. 3PL simulation is also available,
+but currently uses DPMirt’s fallback generator and does not target
+`target_rho`.
 
 ``` r
 
@@ -36,20 +39,20 @@ sim <- dpmirt_simulate(
   latent_shape = "normal",
   seed         = 42
 )
-#> Note: Target rho* = 0.800 is near the achievable maximum (0.824) for this configuration.
 
 str(sim, max.level = 1)
-#> List of 13
-#>  $ response    : num [1:200, 1:25] 0 0 0 1 1 0 1 0 1 0 ...
+#> List of 14
+#>  $ response    : num [1:200, 1:25] 0 0 0 1 0 1 0 0 0 0 ...
 #>   ..- attr(*, "dimnames")=List of 2
 #>  $ theta       : num [1:200] -2.5215 0.0563 -0.6466 1.135 -0.3096 ...
-#>  $ beta        : num [1:25] 0.131 -1.295 0.384 -0.636 0.507 ...
+#>  $ beta        : num [1:25] 1.19 -0.164 -0.263 -0.372 0.736 ...
 #>  $ lambda      : NULL
 #>  $ delta       : NULL
 #>  $ n_persons   : num 200
 #>  $ n_items     : num 25
 #>  $ model       : chr "rasch"
-#>  $ reliability : num 0.807
+#>  $ reliability : num 0.786
+#>  $ achieved_rho: num 0.8
 #>  $ target_rho  : num 0.8
 #>  $ latent_shape: chr "normal"
 #>  $ eqc_result  :List of 16
@@ -60,28 +63,31 @@ str(sim, max.level = 1)
 
 The returned `dpmirt_sim` object contains the binary response matrix
 (`sim$response`), the true person abilities (`sim$theta`), and the true
-item difficulties (`sim$beta`). You can inspect the simulation with
-[`print()`](https://rdrr.io/r/base/print.html):
+item difficulties (`sim$beta`). `sim$reliability` is the empirical KR-20
+reliability of the generated response matrix. When IRTsimrel is used,
+`sim$achieved_rho` records the calibration-level achieved marginal
+reliability; it is `NULL` for fallback simulations. You can inspect the
+simulation with [`print()`](https://rdrr.io/r/base/print.html):
 
 ``` r
 
 sim
 #> DPMirt Simulated Data
 #> =====================
-#> Model:         RASCH 
-#> Persons:       200 
-#> Items:         25 
-#> Distribution:  normal 
-#> Method:        irtsimrel 
-#> Target rho:    0.8 
-#> KR-20:         0.807 
-#> EQC c*:        0.9082 
-#> EQC rho:       0.8
+#> Model:         RASCH
+#> Persons:       200
+#> Items:         25
+#> Distribution:  normal
+#> Method:        irtsimrel
+#> Target rho:    0.8
+#> KR-20:         0.786
+#> EQC c*:       0.9059
+#> EQC rho:      0.8
 ```
 
 Because
 [`dpmirt_simulate()`](https://joonho112.github.io/DPMirt/reference/dpmirt_simulate.md)
-is pure R, it runs instantly — no NIMBLE compilation needed.
+does not fit a model, it runs quickly — no NIMBLE compilation needed.
 
 ## Fit a Rasch Model with a Normal Prior
 
@@ -89,7 +95,8 @@ The main entry point is
 [`dpmirt()`](https://joonho112.github.io/DPMirt/reference/dpmirt.md).
 Below is the call you would run in an interactive session. NIMBLE
 compiles the model on first use, which takes roughly 1–2 minutes; after
-that, additional sampling is fast.
+that, additional sampling is fast while the compiled object is live in
+the current R session.
 
 ``` r
 
@@ -100,38 +107,45 @@ fit <- dpmirt(
   prior   = "normal",
   niter   = 10000,
   nburnin = 2000,
+  thin    = 32,
+  thin2   = 32,
   seed    = 100
 )
 ```
 
-For this vignette we load a pre-computed result instead:
+For this vignette we load a compact pre-computed result instead:
 
 ``` r
 
 fit <- readRDS(find_extdata("vignette_fit_rasch_normal.rds"))
 ```
 
+Compact RDS fixtures retain thinned posterior draws suitable for
+summaries and plots, but they cannot be resumed because compiled NIMBLE
+pointers are only valid in the R session that created them.
+
 ## Understanding the Output
 
-A `dpmirt_fit` object stores posterior samples, diagnostics, and model
-configuration. The [`print()`](https://rdrr.io/r/base/print.html) method
-gives a compact overview:
+A `dpmirt_fit` object stores posterior samples, chain/run metadata,
+diagnostics, and model configuration. The
+[`print()`](https://rdrr.io/r/base/print.html) method gives a compact
+overview:
 
 ``` r
 
 print(fit)
 #> DPMirt Model Fit
 #> ================
-#> Model:            RASCH 
-#> Prior:            normal 
-#> Identification:   constrained_item 
-#> Persons (N):      200 
-#> Items (I):        25 
-#> MCMC:            10000 iterations (2000 burnin, thin=1)
-#> WAIC:             6079.03 
-#> Total time:       55.4 sec 
-#> Min ESS (items):  1714 
-#> Min ESS (theta):  1372
+#> Model:            RASCH
+#> Prior:            normal
+#> Identification:   constrained_item
+#> Persons (N):      200
+#> Items (I):        25
+#> MCMC:            10000 iterations (2000 burnin, thin=32)
+#> WAIC:             6079.03
+#> Total time:       55.4 sec
+#> Min ESS (items):  160
+#> Min ESS (theta):  66
 ```
 
 Key fields:
@@ -140,7 +154,8 @@ Key fields:
 - **MCMC** — iteration count, burn-in, and thinning.
 - **WAIC** — Watanabe–Akaike information criterion for model comparison.
 - **Min ESS** — minimum effective sample size across items and persons;
-  a quick convergence check.
+  a useful first-pass diagnostic to review alongside trace and rank
+  plots.
 - **Total time** — wall-clock time for the full pipeline.
 
 For a richer view, call
@@ -151,61 +166,61 @@ For a richer view, call
 summary(fit)
 #> DPMirt Model Summary
 #> ====================
-#> 
+#>
 #> Model Configuration:
-#>   Model:            RASCH 
-#>   Prior:            normal 
-#>   Identification:   constrained_item 
-#>   Rescaled:         TRUE 
-#> 
+#>   Model:            RASCH
+#>   Prior:            normal
+#>   Identification:   constrained_item
+#>   Rescaled:         TRUE
+#>
 #> Data:
-#>   Persons (N): 200 
-#>   Items (I):   25 
-#> 
+#>   Persons (N): 200
+#>   Items (I):   25
+#>
 #> MCMC Settings:
-#>   Iterations:  10000 
-#>   Burn-in:     2000 
-#>   Thinning:    1 
-#>   Chains:      1 
-#> 
+#>   Iterations:  10000
+#>   Burn-in:     2000
+#>   Thinning:    32
+#>   Chains:      1
+#>
 #> Timing:
-#>   Compilation:  18.1 sec 
-#>   Sampling:     36.6 sec 
-#>   Total:        55.4 sec 
-#> 
+#>   Compilation:  18.1 sec
+#>   Sampling:     36.6 sec
+#>   Total:        55.4 sec
+#>
 #> Item Difficulty (beta) Summary:
 #>            Mean    SD
-#> beta[1]   0.143 0.151
-#> beta[2]  -1.022 0.161
-#> beta[3]   0.535 0.158
-#> beta[4]  -0.688 0.154
-#> beta[5]   0.191 0.152
-#> beta[6]   0.501 0.154
-#> beta[7]  -0.347 0.149
-#> beta[8]  -0.378 0.153
-#> beta[9]   0.482 0.156
-#> beta[10] -0.843 0.158
-#> beta[11]  0.760 0.157
-#> beta[12]  0.335 0.155
-#> beta[13]  0.147 0.152
-#> beta[14] -0.252 0.148
-#> beta[15]  0.031 0.148
-#> beta[16] -0.038 0.157
-#> beta[17] -0.186 0.151
-#> beta[18]  0.383 0.151
-#> beta[19]  0.999 0.163
-#> beta[20]  0.897 0.165
-#> beta[21] -0.113 0.153
-#> beta[22] -0.692 0.154
-#> beta[23]  0.678 0.155
-#> beta[24] -0.180 0.151
-#> beta[25] -1.342 0.170
-#> 
+#> beta[1]   0.152 0.155
+#> beta[2]  -1.031 0.158
+#> beta[3]   0.532 0.148
+#> beta[4]  -0.690 0.155
+#> beta[5]   0.184 0.164
+#> beta[6]   0.504 0.149
+#> beta[7]  -0.358 0.142
+#> beta[8]  -0.366 0.158
+#> beta[9]   0.486 0.152
+#> beta[10] -0.820 0.165
+#> beta[11]  0.755 0.151
+#> beta[12]  0.354 0.157
+#> beta[13]  0.148 0.158
+#> beta[14] -0.236 0.148
+#> beta[15]  0.033 0.146
+#> beta[16] -0.038 0.164
+#> beta[17] -0.181 0.150
+#> beta[18]  0.374 0.140
+#> beta[19]  0.994 0.166
+#> beta[20]  0.907 0.161
+#> beta[21] -0.127 0.151
+#> beta[22] -0.700 0.151
+#> beta[23]  0.650 0.148
+#> beta[24] -0.174 0.146
+#> beta[25] -1.351 0.171
+#>
 #> Person Ability (theta) Summary:
-#>   Range: [ -2.052 ,  1.768 ]
-#>   Mean:   -0.073 
-#>   SD:     0.81 
-#> 
+#>   Range: [ -2.077 ,  1.82 ]
+#>   Mean:   -0.073
+#>   SD:     0.808
+#>
 #> Model Comparison:
 #>   WAIC:  6079.03
 ```
@@ -214,11 +229,43 @@ The summary adds item-by-item parameter estimates (posterior mean and
 SD), a distributional summary of person abilities, and — for DPM models
 — cluster and concentration-parameter diagnostics.
 
+Formal diagnostics are available with
+[`dpmirt_diagnostics()`](https://joonho112.github.io/DPMirt/reference/dpmirt_diagnostics.md):
+
+``` r
+
+diag <- dpmirt_diagnostics(fit)
+diag$chain_info
+#>   chain_id seed niter nburnin thin thin2 reset resumed n_draws_main
+#> 1        1  100 10000    2000   32    32  TRUE   FALSE          250
+#>   n_draws_theta row_start_main row_end_main row_start_theta row_end_theta
+#> 1           250              1          250               1           250
+#>   sampling_time     waic
+#> 1        36.586 6079.035
+
+rhat <- diag[["rhat"]]
+if (is.null(rhat)) {
+  "R-hat unavailable for this single-chain fixture"
+} else {
+  rhat
+}
+#> [1] "R-hat unavailable for this single-chain fixture"
+```
+
+Single-chain fits, including the pre-computed fixtures used in this
+vignette, return `NULL` R-hat. Use ESS, trace plots, and substantive
+posterior checks as first-pass diagnostics; R-hat appears when at least
+two labeled chains have retained draws.
+
 ## Visualizations
 
 `plot(fit, type = ...)` dispatches to 12 plot types. If **ggplot2** is
 installed the package uses it automatically; otherwise base R graphics
-are produced.
+are produced. The same views are also available through standalone
+helpers such as
+[`dpmirt_plot_density()`](https://joonho112.github.io/DPMirt/reference/dpmirt_plot_density.md)
+and
+[`dpmirt_plot_trace()`](https://joonho112.github.io/DPMirt/reference/dpmirt_plot_trace.md).
 
 ### Posterior Density of Theta
 
@@ -233,8 +280,8 @@ prior.](quick-start_files/figure-html/plot-density-1.png)
 Kernel density of the posterior mean theta under a Normal prior.
 
 This shows the kernel density of the $`N = 200`$ posterior-mean person
-abilities. Under a Normal prior the density is smooth and unimodal by
-construction.
+abilities. In this normal-population example, the estimated density is
+expected to be smooth and roughly unimodal.
 
 ### Item Difficulty Estimates
 
@@ -259,14 +306,17 @@ $`\pm 2`$ posterior standard deviations. Items are ordered from easiest
 plot(fit, type = "trace")
 ```
 
-![Log-likelihood trace plot. A stationary trace suggests
-convergence.](quick-start_files/figure-html/plot-trace-1.png)
+![Log-likelihood trace plot. A stationary trace is a first-pass visual
+mixing check.](quick-start_files/figure-html/plot-trace-1.png)
 
-Log-likelihood trace plot. A stationary trace suggests convergence.
+Log-likelihood trace plot. A stationary trace is a first-pass visual
+mixing check.
 
 A stationary log-likelihood trace with no visible trend or drift is a
-first-pass convergence check. For formal diagnostics see the **Models
-and Workflow** vignette.
+first-pass visual mixing check. For formal diagnostics see the [Models
+and
+Workflow](https://joonho112.github.io/DPMirt/articles/models-and-workflow.md)
+vignette.
 
 ## Adding DPM Flexibility
 
@@ -284,11 +334,13 @@ fit_dpm <- dpmirt(
   prior   = "dpm",
   niter   = 10000,
   nburnin = 2000,
-  seed    = 200
+  thin    = 32,
+  thin2   = 32,
+  seed    = 101
 )
 ```
 
-Again, we load a pre-computed result:
+Again, we load a compact pre-computed result:
 
 ``` r
 
@@ -336,7 +388,6 @@ if (requireNamespace("ggplot2", quietly = TRUE)) {
     theme_bw() +
     theme(legend.position = "top")
 }
-#> Warning: package 'ggplot2' was built under R version 4.5.2
 ```
 
 ![Normal-prior vs. DPM-prior posterior mean densities on the same data.
@@ -354,17 +405,16 @@ well.
 plot(fit_dpm, type = "clusters")
 ```
 
-![Number of active clusters across MCMC iterations (left) and its
-posterior distribution
-(right).](quick-start_files/figure-html/plot-clusters-1.png)
+![Cluster-count trace across MCMC iterations. Dashed line: posterior
+mean cluster count.](quick-start_files/figure-html/plot-clusters-1.png)
 
-Number of active clusters across MCMC iterations (left) and its
-posterior distribution (right).
+Cluster-count trace across MCMC iterations. Dashed line: posterior mean
+cluster count.
 
-The left panel traces the number of active clusters at each post-burn-in
-iteration; the right panel shows the posterior distribution of cluster
-counts. A single dominant mode suggests the data are well-described by
-that many latent subgroups.
+`plot(fit_dpm, type = "clusters")` shows how the number of active
+clusters moves across retained draws. Stable oscillation without a
+persistent trend is a first-pass mixing check; it is not a standalone
+convergence diagnostic.
 
 ### DP Mixture Density
 
@@ -382,16 +432,22 @@ band. Dashed line: N(0,1) reference.
 
 The solid curve is the posterior mean of the DP mixture density
 evaluated on a fine grid; the shaded ribbon is a 95% pointwise credible
-band. The dashed line shows the standard Normal for reference.
+band. The dashed line shows the standard Normal for reference. Computing
+this density from scratch reconstructs posterior DP-measure samples and
+can be expensive. The compact vignette fixture stores a plot-ready
+`dp_density` summary only; call
+[`dpmirt_dp_density()`](https://joonho112.github.io/DPMirt/reference/dpmirt_dp_density.md)
+on a live/full DPM fit, not on these compact fixtures, if you need to
+recompute the DP measure.
 
 ## Seeing the DPM Advantage
 
 The example above used a truly Normal population, so both priors
 performed equally well. But what happens when the population departs
-from normality? The DPMirt package ships with pre-computed results for a
-**bimodal** population — a 50/50 mixture of two groups centered at
-$`\theta = -1.5`$ and $`\theta = 1.5`$ — that reveals the DPM prior’s
-key advantage.
+from normality? The DPMirt package ships with compact pre-computed
+results for a **bimodal** population — a 50/50 mixture of two groups
+centered at $`\theta = -1.5`$ and $`\theta = 1.5`$ — that reveals the
+DPM prior’s key advantage.
 
 ``` r
 
@@ -441,8 +497,9 @@ recovers both modes.
 > DPM prior adapts its shape to the data, preserving the bimodal
 > structure. This difference is most consequential for classification
 > decisions (e.g., identifying students for intervention) and for
-> reporting on the shape of the population distribution. See
-> [`vignette("posterior-summaries")`](https://joonho112.github.io/DPMirt/articles/posterior-summaries.md)
+> reporting on the shape of the population distribution. See the
+> [posterior summary
+> vignette](https://joonho112.github.io/DPMirt/articles/posterior-summaries.md)
 > for a detailed comparison of estimators that exploit this flexibility.
 
 ## Extracting Estimates
@@ -467,28 +524,28 @@ The `theta` element is a data frame with one row per person:
 ``` r
 
 head(est$theta, 10)
-#>            theta_pm theta_psd    theta_cb     theta_gr      rbar rhat
-#> eta[1]  -1.64208358 0.4850620 -1.82658631 -1.898414370  14.10438    6
-#> eta[2]   0.08246350 0.3785971  0.10105187  0.130777459 110.04200  114
-#> eta[3]   0.05810186 0.3859230  0.07382128  0.001450727 108.21700  103
-#> eta[4]   1.15463248 0.4241983  1.29948472  1.393735077 179.26688  192
-#> eta[5]  -0.68190514 0.3877922 -0.75333256 -0.665180404  53.89862   52
-#> eta[6]   0.81760681 0.3950633  0.92276925  0.811079297 162.99625  167
-#> eta[7]   1.72015915 0.4758415  1.93161057  2.206872410 194.11588  200
-#> eta[8]  -0.06517854 0.3837235 -0.06397722 -0.057278283  98.39575   98
-#> eta[9]   0.66101983 0.3824489  0.74774183  0.688329335 153.44163  159
-#> eta[10] -0.06306564 0.3877453 -0.06161549 -0.033409063  98.65662  100
-#>         theta_lower theta_upper
-#> eta[1]  -2.71809760 -0.76137677
-#> eta[2]  -0.63931121  0.81955388
-#> eta[3]  -0.68900612  0.82161938
-#> eta[4]   0.34563696  2.00481098
-#> eta[5]  -1.44006283  0.07806641
-#> eta[6]   0.05942028  1.60027832
-#> eta[7]   0.84623291  2.75717002
-#> eta[8]  -0.84149547  0.68498198
-#> eta[9]  -0.06723822  1.41774065
-#> eta[10] -0.82119382  0.69405528
+#>            theta_pm theta_psd    theta_cb    theta_gr    rbar rhat theta_lower
+#> eta[1]  -1.64285702 0.4766845 -1.82627181 -1.81331598  13.868    7 -2.54713745
+#> eta[2]   0.05480995 0.3948536  0.07014816  0.03534768 107.740  106 -0.73603358
+#> eta[3]   0.06252851 0.3846779  0.07877036  0.07052001 109.004  109 -0.73966539
+#> eta[4]   1.15294812 0.4091460  1.29684997  1.35338609 179.372  191  0.35732496
+#> eta[5]  -0.65482873 0.4126593 -0.72257090 -0.62142890  56.032   55 -1.46137455
+#> eta[6]   0.80144518 0.3840819  0.90419511  0.79443861 162.224  166  0.08404592
+#> eta[7]   1.73157522 0.5066714  1.94321937  2.22336701 193.828  200  0.77466479
+#> eta[8]  -0.06628711 0.3844546 -0.06512624 -0.06021697  98.388   98 -0.86402677
+#> eta[9]   0.65946011 0.3682218  0.74558725  0.71775515 153.764  161 -0.02591577
+#> eta[10] -0.05999882 0.3781730 -0.05810176 -0.03532863  99.232  100 -0.81164159
+#>         theta_upper
+#> eta[1]   -0.7310668
+#> eta[2]    0.7879246
+#> eta[3]    0.7153256
+#> eta[4]    1.9459509
+#> eta[5]    0.1410935
+#> eta[6]    1.5895208
+#> eta[7]    2.7688739
+#> eta[8]    0.5854657
+#> eta[9]    1.3693816
+#> eta[10]   0.6112785
 ```
 
 > **Which estimator should you use?** It depends on your inferential
@@ -496,37 +553,60 @@ head(est$theta, 10)
 > **PM**. If you need the set of estimates to reproduce the shape of the
 > ability distribution (e.g., for group-level reporting), use **CB**. If
 > you need both accurate rankings *and* distributional fidelity, use
-> **GR**. See the **Posterior Summaries** vignette for an in-depth
-> comparison.
+> **GR**. See the [Posterior
+> Summaries](https://joonho112.github.io/DPMirt/articles/posterior-summaries.md)
+> vignette for an in-depth comparison.
 
 Item estimates are available in `est$beta`:
 
 ``` r
 
 head(est$beta, 10)
-#>             beta_pm  beta_psd    beta_cb     beta_gr     rbar rhat beta_lower
-#> beta[1]   0.1393281 0.1481244  0.1437448  0.09951606 14.54713   14 -0.1448619
-#> beta[2]  -1.0281008 0.1593125 -1.0606917 -1.05388296  2.26200    2 -1.3531175
-#> beta[3]   0.5266330 0.1558563  0.5433273  0.59943417 19.94138   21  0.2277232
-#> beta[4]  -0.6922001 0.1558382 -0.7141429 -0.73611032  4.36675    4 -0.9959212
-#> beta[5]   0.1946660 0.1501926  0.2008369  0.23378009 15.36788   16 -0.1017568
-#> beta[6]   0.5082932 0.1550549  0.5244062  0.52121043 19.70375   20  0.2010165
-#> beta[7]  -0.3503717 0.1511989 -0.3614786 -0.36061570  7.43475    7 -0.6562346
-#> beta[8]  -0.3770295 0.1534740 -0.3889813 -0.46590990  7.14050    6 -0.6858021
-#> beta[9]   0.4868289 0.1543031  0.5022614  0.44842581 19.43700   19  0.1870308
-#> beta[10] -0.8442989 0.1608205 -0.8710633 -0.87137757  3.31225    3 -1.1662977
+#>             beta_pm  beta_psd    beta_cb     beta_gr   rbar rhat beta_lower
+#> beta[1]   0.1307698 0.1442099  0.1350333  0.09161858 14.516   14 -0.1579032
+#> beta[2]  -1.0297955 0.1703261 -1.0633696 -1.05854134  2.208    2 -1.3789429
+#> beta[3]   0.5317292 0.1696429  0.5490650  0.61044823 19.988   21  0.2120664
+#> beta[4]  -0.6976213 0.1592790 -0.7203656 -0.73821668  4.328    4 -0.9963324
+#> beta[5]   0.1922493 0.1606743  0.1985172  0.22518135 15.392   16 -0.1352563
+#> beta[6]   0.5271893 0.1569807  0.5443771  0.52510925 19.972   20  0.2025349
+#> beta[7]  -0.3448820 0.1581377 -0.3561261 -0.35726360  7.476    7 -0.6537771
+#> beta[8]  -0.3726788 0.1579125 -0.3848292 -0.46892254  7.156    6 -0.6754548
+#> beta[9]   0.4772037 0.1637734  0.4927618  0.44679281 19.280   19  0.1673519
+#> beta[10] -0.8456039 0.1545319 -0.8731728 -0.87159981  3.340    3 -1.1463779
 #>           beta_upper
-#> beta[1]   0.44597696
-#> beta[2]  -0.72312083
-#> beta[3]   0.84615054
-#> beta[4]  -0.39020070
-#> beta[5]   0.48423148
-#> beta[6]   0.80991762
-#> beta[7]  -0.06704874
-#> beta[8]  -0.08586970
-#> beta[9]   0.78795591
-#> beta[10] -0.52819222
+#> beta[1]   0.41353003
+#> beta[2]  -0.68482805
+#> beta[3]   0.87901922
+#> beta[4]  -0.37439426
+#> beta[5]   0.48604781
+#> beta[6]   0.82924555
+#> beta[7]  -0.07611460
+#> beta[8]  -0.09238195
+#> beta[9]   0.77710904
+#> beta[10] -0.53420017
 ```
+
+If you need posterior draws for custom summaries or graphics, use
+[`dpmirt_draws()`](https://joonho112.github.io/DPMirt/reference/dpmirt_draws.md):
+
+``` r
+
+theta_draws <- dpmirt_draws(fit_dpm, vars = "theta")
+dim(theta_draws)
+#> [1] 250 200
+theta_draws[1:5, 1:4]
+#>         eta[1]       eta[2]      eta[3]   eta[4]
+#> [1,] -1.822838 -0.406710352  0.06378316 1.744004
+#> [2,] -2.269677 -0.009964018  0.50215032 1.213680
+#> [3,] -1.871565  0.227038139 -0.08308460 1.124954
+#> [4,] -1.432383 -0.156331852  0.73955294 1.021192
+#> [5,] -2.039467  0.092179447  0.42273050 1.026158
+```
+
+[`dpmirt_draws()`](https://joonho112.github.io/DPMirt/reference/dpmirt_draws.md)
+currently returns retained rescaled draws. Raw, unrescaled draw
+extraction and disk-backed draw storage are reserved for a future
+release.
 
 ## What’s Next?
 
@@ -535,9 +615,9 @@ following vignettes go deeper:
 
 | Step | What to read | Why |
 |:---|:---|:---|
-| Understand models | *Models and Workflow* | Step-by-step control over specification, compilation, and sampling; 2PL and 3PL models |
-| Choose an estimator | *Posterior Summaries* | When PM vs CB vs GR; shrinkage diagnostics and loss evaluation |
-| Set DPM priors | *Prior Elicitation* | Principled choice of the concentration parameter $`\alpha`$ via **DPprior** |
+| Understand models | [Models and Workflow](https://joonho112.github.io/DPMirt/articles/models-and-workflow.md) | Step-by-step control over specification, live compiled objects, sampling, diagnostics, 3PL delta, and identification limits |
+| Choose an estimator | [Posterior Summaries](https://joonho112.github.io/DPMirt/articles/posterior-summaries.md) | When PM vs CB vs GR; shrinkage diagnostics and loss evaluation |
+| Set DPM priors | [Prior Elicitation](https://joonho112.github.io/DPMirt/articles/prior-elicitation.md) | Optional DPprior calibration of $`\alpha`$; Gamma(1, 3) fallback |
 
 ------------------------------------------------------------------------
 

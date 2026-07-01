@@ -67,6 +67,61 @@ test_that("DPM spec custom M", {
 })
 
 
+test_that("DPM spec records custom base measure constants", {
+  spec <- dpmirt_spec(
+    y_test,
+    model = "rasch",
+    prior = "dpm",
+    base_measure = list(s2_mu = 4, nu1 = 3, nu2 = 2)
+  )
+
+  expect_equal(spec$constants$s2_mu, 4)
+  expect_equal(spec$constants$nu1, 3)
+  expect_equal(spec$constants$nu2, 2)
+  expect_equal(spec$config$base_measure$s2_mu, 4)
+})
+
+
+test_that("DPM spec records edge-value alpha, M, and base measure settings", {
+  spec <- dpmirt_spec(
+    y_test,
+    model = "rasch",
+    prior = "dpm",
+    M = 2L,
+    alpha_prior = c(0.25, 4),
+    base_measure = list(s2_mu = 0.75, nu1 = 3.5, nu2 = 2.25)
+  )
+
+  expect_equal(spec$constants$M, 2L)
+  expect_equal(unname(spec$config$alpha_prior), c(0.25, 4))
+  expect_equal(spec$constants$s2_mu, 0.75)
+  expect_equal(spec$constants$nu1, 3.5)
+  expect_equal(spec$constants$nu2, 2.25)
+  expect_length(spec$inits$zi, spec$constants$N)
+  expect_length(spec$inits$muTilde, 2)
+  expect_length(spec$inits$s2Tilde, 2)
+})
+
+
+test_that("3PL-DPM spec carries delta and DPM monitors", {
+  spec <- dpmirt_spec(
+    y_test,
+    model = "3pl",
+    prior = "dpm",
+    parameterization = "irt",
+    M = 6L
+  )
+
+  expect_equal(spec$config$model, "3pl")
+  expect_equal(spec$config$identification, "unconstrained")
+  expect_equal(spec$constants$M, 6L)
+  expect_true(all(c("delta", "lambda", "alpha", "zi",
+                    "muTilde", "s2Tilde") %in% spec$monitors))
+  expect_length(spec$inits$delta, spec$constants$I)
+  expect_true(all(spec$inits$delta > 0 & spec$inits$delta < 1))
+})
+
+
 # ============================================================================
 # Alpha Prior Resolution
 # ============================================================================

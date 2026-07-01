@@ -137,8 +137,8 @@ dpmirt_plot_items <- function(fit, ...) {
 
 #' Plot Log-Likelihood MCMC Trace
 #'
-#' Displays the log-likelihood trace across MCMC iterations for convergence
-#' assessment. A well-mixed chain shows stable oscillation around a
+#' Displays the log-likelihood trace across MCMC iterations as a first-pass
+#' visual mixing check. A well-mixed run shows stable oscillation around a
 #' stationary level. Requires ggplot2.
 #'
 #' @param fit A \code{dpmirt_fit} object from \code{\link{dpmirt}}.
@@ -181,8 +181,8 @@ dpmirt_plot_trace <- function(fit, ...) {
 #' Plot Cluster Count Diagnostics
 #'
 #' For DPM models, displays the trace and histogram of the number of active
-#' clusters across MCMC iterations. Stable oscillation indicates convergence.
-#' Requires ggplot2.
+#' clusters across MCMC iterations. Stable oscillation is a useful first-pass
+#' visual mixing check. Requires ggplot2.
 #'
 #' @param fit A \code{dpmirt_fit} object with \code{prior = "dpm"}.
 #' @param ... Currently unused.
@@ -237,6 +237,11 @@ dpmirt_plot_clusters <- function(fit, ...) {
 #' \code{dpmirt_dp_density} object (computed automatically by
 #' \code{\link{dpmirt}} or manually via \code{\link{dpmirt_dp_density}}).
 #' Requires ggplot2.
+#'
+#' @details For 2PL/3PL IRT and SI parameterizations, transformed-scale DP
+#' density reconstruction currently uses the same location-shift contract as
+#' \code{\link{dpmirt_dp_density}}. Treat these plots as diagnostic summaries;
+#' Rasch/location-shift settings are the most directly interpretable.
 #'
 #' @param fit A \code{dpmirt_fit} object with \code{prior = "dpm"} and
 #'   a computed DP density.
@@ -504,6 +509,9 @@ dpmirt_plot_parameter_trace <- function(fit,
 
   n_cols <- ncol(samp)
   indices <- indices[indices >= 1 & indices <= n_cols]
+  if (length(indices) == 0L) {
+    stop("No valid indices specified.", call. = FALSE)
+  }
 
   df_list <- lapply(indices, function(idx) {
     data.frame(
@@ -612,13 +620,13 @@ dpmirt_plot_caterpillar <- function(fit,
 
 #' Plot Posterior Density vs Reference Distribution
 #'
-#' Overlays the estimated posterior mean density with a reference distribution
-#' (e.g., true generating density or N(0,1)). Useful for assessing how well
-#' the model recovers the latent trait distribution. Requires ggplot2.
+#' Overlays the estimated posterior mean density with the N(0,1) reference
+#' distribution and, when available, the fitted DP mixture density. Requires
+#' ggplot2.
 #'
 #' @param fit A \code{dpmirt_fit} object from \code{\link{dpmirt}}.
-#' @param reference Character or numeric vector. If \code{"normal"} (default),
-#'   overlays N(0,1). If numeric, treated as reference theta values.
+#' @param reference Character. Currently only \code{"normal"} is supported,
+#'   which overlays N(0,1).
 #' @param ... Currently unused.
 #'
 #' @return A \code{ggplot} object.
@@ -632,8 +640,6 @@ dpmirt_plot_caterpillar <- function(fit,
 #' # Compare to N(0,1)
 #' dpmirt_plot_density_compare(fit)
 #'
-#' # Compare to true theta
-#' dpmirt_plot_density_compare(fit, reference = sim$theta)
 #' }
 #'
 #' @family visualization
@@ -803,9 +809,11 @@ dpmirt_plot_info <- function(fit, theta_range = c(-4, 4), n_points = 201,
 
 #' Plot Posterior Predictive Check
 #'
-#' Compares observed item statistics (proportion correct) with the
-#' posterior predictive distribution. Points falling outside the
-#' predictive intervals may indicate model misfit. Requires ggplot2.
+#' Compares posterior predictive replicated statistics with fitted expected
+#' proportions or scores computed from posterior mean parameters. DPMirt does
+#' not currently store the original response matrix in \code{dpmirt_fit}, so
+#' this is a fitted-proportion check rather than a direct observed-data PPC.
+#' Requires ggplot2.
 #'
 #' @param fit A \code{dpmirt_fit} object from \code{\link{dpmirt}}.
 #' @param stat Character. Summary statistic for comparison:

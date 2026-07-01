@@ -108,6 +108,13 @@
 }
 
 
+.expect_base_plot_returns_null <- function(expr) {
+  result <- NULL
+  expect_silent(result <- force(expr))
+  expect_null(result)
+}
+
+
 # ============================================================================
 # Tests: Base R plot types (12 types)
 # ============================================================================
@@ -244,6 +251,28 @@ test_that("base R: pp_check works (total_score)", {
 })
 
 
+test_that("base R: representative plots invisibly return NULL", {
+  fit_normal <- .mock_fit("rasch", "normal")
+  fit_dpm <- .mock_fit("rasch", "dpm")
+
+  .expect_base_plot_returns_null(
+    plot(fit_normal, type = "density", engine = "base")
+  )
+  .expect_base_plot_returns_null(
+    plot(fit_normal, type = "items", engine = "base")
+  )
+  .expect_base_plot_returns_null(
+    plot(fit_dpm, type = "clusters", engine = "base")
+  )
+  .expect_base_plot_returns_null(
+    plot(fit_dpm, type = "dp_density", engine = "base")
+  )
+  .expect_base_plot_returns_null(
+    plot(fit_normal, type = "icc", engine = "base", items = 1:2)
+  )
+})
+
+
 # ============================================================================
 # Tests: S3 methods for other classes
 # ============================================================================
@@ -251,6 +280,12 @@ test_that("base R: pp_check works (total_score)", {
 test_that("plot.dpmirt_estimates: estimates type works", {
   est <- .mock_estimates()
   expect_silent(plot(est, type = "estimates", param = "theta"))
+})
+
+test_that("plot.dpmirt_estimates invisibly returns the input object", {
+  est <- .mock_estimates()
+  result <- plot(est, type = "estimates", param = "theta")
+  expect_identical(result, est)
 })
 
 test_that("plot.dpmirt_estimates: shrinkage type works", {
@@ -266,6 +301,12 @@ test_that("plot.dpmirt_estimates: beta param works", {
 test_that("plot.dpmirt_sim: parameters works for Rasch", {
   sim <- .mock_sim("rasch")
   expect_silent(plot(sim, type = "parameters"))
+})
+
+test_that("plot.dpmirt_sim invisibly returns the input object", {
+  sim <- .mock_sim("rasch")
+  result <- plot(sim, type = "parameters")
+  expect_identical(result, sim)
 })
 
 test_that("plot.dpmirt_sim: parameters works for 2PL", {
@@ -325,6 +366,20 @@ test_that("ggplot2: parameter_trace returns ggplot", {
   fit <- .mock_fit("rasch", "normal")
   p <- dpmirt_plot_parameter_trace(fit, param = "beta", indices = 1:2)
   expect_s3_class(p, "ggplot")
+  built <- ggplot2::ggplot_build(p)
+  expect_equal(nrow(built$data[[1]]), 2L * nrow(fit$beta_samp))
+  expect_true("parameter" %in% names(p$data))
+  expect_equal(unique(p$data$parameter), c("beta[1]", "beta[2]"))
+})
+
+
+test_that("ggplot2: parameter_trace rejects invalid indices", {
+  skip_if_not_installed("ggplot2")
+  fit <- .mock_fit("rasch", "normal")
+  expect_error(
+    dpmirt_plot_parameter_trace(fit, param = "beta", indices = 99:100),
+    "No valid indices"
+  )
 })
 
 test_that("ggplot2: caterpillar returns ggplot", {

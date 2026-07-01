@@ -50,6 +50,7 @@ find_extdata <- function(filename) {
 has_data <- nzchar(find_extdata("vignette_estimates_comparison.rds"))
 has_lowrel_data <- nzchar(find_extdata("vignette_estimates_comparison_lowrel.rds"))
 has_loss_data <- nzchar(find_extdata("vignette_loss_results.rds"))
+has_lowrel_loss_data <- nzchar(find_extdata("vignette_loss_results_lowrel.rds"))
 ```
 
 ## 1. Overview
@@ -219,7 +220,8 @@ ggplot(df_shrink, aes(x = value, colour = Method, fill = Method)) +
 > closely, preserving both modes and the valley between them.
 
 If the pre-computed data are not installed, the figure above will not
-render.  See `vignette("simulation-study")` for generation instructions.
+render. See [Simulation Study](simulation-study.html) for generation
+instructions.
 
 
 ## 4. Posterior Mean (PM) Estimator
@@ -240,7 +242,7 @@ DPMirt returns it as `theta_pm` whenever you call `dpmirt_estimates()`.
 ### Code
 
 ```{r pm-code, eval=FALSE}
-# Compute only the posterior mean
+# Compute PM-only summaries
 est <- dpmirt_estimates(fit, methods = "pm")
 
 # Inspect first few values
@@ -399,9 +401,12 @@ are all represented faithfully.
 # Compute all three estimators
 est <- dpmirt_estimates(fit, methods = c("pm", "cb", "gr"))
 
-# GR estimates with posterior mean ranks
+# GR estimates with posterior mean ranks and integer GR ranks
 head(est$theta[, c("theta_pm", "theta_gr", "rbar", "rhat")])
 ```
+
+Here `rhat` is the integer rank used by the GR estimator. It is not the
+Gelman--Rubin R-hat diagnostic returned by `dpmirt_diagnostics()`.
 
 ### Quality flags: ties
 
@@ -548,19 +553,23 @@ knitr::kable(
 ### Practical implications
 
 - **Low reliability** ($\bar{w} \approx 0.50$): Shrinkage dominates.
-  CB provides the largest EDF gains; model flexibility matters less
-  because posteriors concentrate around the prior regardless.
+  Estimator choice matters most. CB provides a simple variance correction,
+  while GR is usually preferable when ranking or EDF recovery is the primary
+  goal and the posterior ranks are stable.
 - **Moderate reliability** ($\bar{w} \approx 0.70$): Both estimator and
   prior contribute meaningfully.  DPM + GR starts to outperform
   Normal + GR for non-normal populations.  Most screening instruments
   (20--30 items) fall in this regime.
 - **High reliability** ($\bar{w} \approx 0.90$): All three estimators
   converge.  Prior choice (DPM vs. Normal) becomes the primary driver
-  of EDF and ranking accuracy for non-normal distributions.
+  of EDF and distribution-shape recovery for non-normal distributions;
+  ranking loss should still be checked separately when rank decisions are
+  the target.
 
 > **Rule of thumb.** If you have a short test and a non-normal population,
-> start with CB. If you have a long test and suspect non-normality,
-> invest in the DPM prior and use GR.
+> compare CB and GR rather than relying on PM alone. If you have a longer
+> test and suspect non-normality, invest in the DPM prior and use GR for
+> ranking or distributional summaries.
 
 ### Visualizing the reliability effect
 
@@ -619,10 +628,11 @@ narrow unimodal peak.  CB and GR resist this compression by
 inflating the variance (CB) or placing estimates at quantiles of the
 estimated EDF (GR), preserving the two-group structure.
 
-At high reliability (right panel), the data speak loudly enough that
-even PM preserves the bimodal shape.  The three estimators converge, and
-the primary gains come from using the DPM prior rather than the Normal
-prior (see Section 5.4 of `vignette("models-and-workflow")`).
+At high reliability (right panel), the data speak loudly enough that even
+PM begins to preserve the bimodal shape. The three estimators move closer
+together, and the primary gains come from using the DPM prior rather than
+the Normal prior (see Section 5.4 of
+[Models and Workflow](models-and-workflow.html)).
 
 ### Quantifying the shrinkage
 
@@ -663,8 +673,9 @@ names(shrink_wide) <- gsub("Value\\.", "", names(shrink_wide))
 knitr::kable(shrink_wide,
              row.names = FALSE,
              caption = paste("Dispersion of estimates relative to truth.",
-                            "At low reliability, PM retains only ~50% of the",
-                            "true SD; CB and GR recover ~80-95%."))
+                            "At low reliability in this fixture, PM retains",
+                            "roughly half of the true SD, while CB and GR",
+                            "recover about 70%."))
 ```
 
 > **Reading the table.** The "Ratio" rows reveal the shrinkage severity.
@@ -693,9 +704,9 @@ rec_df <- data.frame(
   Estimator = c("PM", "GR", "GR", "GR"),
   Prior = c(
     "Either (Normal or DPM)",
-    "DPM if reliability > 0.7 and non-normal suspected",
-    "DPM if reliability > 0.7",
-    "DPM strongly recommended"
+    "DPM when reliability is moderate/high and non-normality is suspected",
+    "DPM when reliability is moderate/high",
+    "DPM strongly recommended for non-normal populations"
   )
 )
 knitr::kable(
@@ -712,8 +723,9 @@ A simple three-step workflow:
    If individual feedback, use PM.  If classification, ranking, or
    distributional summaries, use GR.
 2. **Assess reliability.** Estimate $\bar{w}$ from KR-20 or the model's
-   average posterior variance.  If $\bar{w} < 0.65$, estimator choice
-   dominates; if $\bar{w} > 0.80$, prior choice dominates.
+   average posterior variance. As a practical heuristic, estimator choice
+   dominates for short/low-reliability tests, while prior choice becomes
+   more visible for longer/high-reliability tests.
 3. **Choose the prior.** If reliability is high and there is reason to
    doubt normality (e.g., known floor/ceiling effects, gifted
    subpopulations, mixed curricula), use a DPM prior.  Otherwise a
@@ -755,8 +767,8 @@ knitr::kable(
 
 The pattern is typical:
 
-- **MSEL:** PM $<$ GR $<$ CB --- posterior mean minimises individual MSE
-  by construction.
+- **MSEL:** PM is smallest in the bundled fixture because posterior means
+  target individual squared-error loss; de-shrinking can raise level MSE.
 - **MSELR:** GR $<$ PM $\approx$ CB --- the triple-goal algorithm directly
   optimises ranking loss.
 - **KS:** GR $<$ CB $<$ PM --- GR and CB both reduce distributional bias,
@@ -765,7 +777,7 @@ The pattern is typical:
 When reliability drops, the loss differences across estimators become more
 pronounced:
 
-```{r loss-table-lowrel, eval=(has_loss_data && has_lowrel_data), echo=FALSE}
+```{r loss-table-lowrel, eval=(has_loss_data && has_lowrel_data && has_lowrel_loss_data), echo=FALSE}
 loss_lo <- readRDS(find_extdata("vignette_loss_results_lowrel.rds"))
 loss_hi <- readRDS(find_extdata("vignette_loss_results.rds"))
 
@@ -812,8 +824,9 @@ loss_mae <- dpmirt_loss(
 print(loss_mae)
 ```
 
-See `vignette("simulation-study")` for a full factorial comparison of
-loss across reliability levels, sample sizes, latent shapes, and priors.
+See [Simulation Study](simulation-study.html) for a full factorial
+comparison of loss across reliability levels, sample sizes, latent shapes,
+and priors.
 
 
 ## 11. Summary and Next Steps
@@ -836,14 +849,14 @@ This vignette has shown that:
 
 ### What next?
 
-- **Simulation study.** See `vignette("simulation-study")` for a full
+- **Simulation study.** See [Simulation Study](simulation-study.html) for a full
   factorial evaluation of prior $\times$ estimator $\times$ reliability
   $\times$ latent shape.
-- **Prior elicitation.** See `vignette("prior-elicitation")` for
-  principled selection of the DPM concentration parameter $\alpha$
-  using the DPprior package.
+- **Prior elicitation.** See [Prior Elicitation](prior-elicitation.html) for
+  optional DPprior calibration of the DPM concentration parameter $\alpha$
+  and the Gamma(1, 3) fallback.
 - **Getting started.** If you have not yet fit your first model, see
-  `vignette("getting-started")` for the basic DPMirt workflow.
+  [Quick Start](quick-start.html) for the basic DPMirt workflow.
 
 ### References
 

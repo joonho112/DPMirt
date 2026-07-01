@@ -31,6 +31,4 @@ tests/testthat/Rplots.pdf
 
 # Development folder (logs, tests, reference code, benchmarks)
 dev/
-
-# Claude session artifacts
-.claude/
+log/

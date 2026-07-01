@@ -52,13 +52,17 @@ print(x, ...)
   Character or NULL. Identification strategy: `"constrained_item"`,
   `"constrained_ability"`, or `"unconstrained"`. If NULL, uses
   model-specific default (constrained_item for Rasch, unconstrained for
-  2PL/3PL).
+  2PL/3PL). Some combinations are intentionally unavailable: DPM models
+  reject `"constrained_ability"`, and 3PL models currently reject
+  `"constrained_item"`.
 
 - alpha_prior:
 
-  Alpha hyperprior specification. NULL for default (auto-elicit or
-  Gamma(1,3)), a numeric vector c(a, b) for Gamma(a, b), or a
-  DPprior_fit object. Only used when prior = "dpm".
+  Alpha hyperprior specification. NULL for default Gamma(1,3), a numeric
+  vector c(a, b) for Gamma(a, b), or a DPprior_fit object. Only used
+  when prior = "dpm". Automatic alpha prior elicitation via `mu_K` is
+  handled by
+  [`dpmirt`](https://joonho112.github.io/DPMirt/reference/dpmirt.md).
 
 - base_measure:
 
@@ -67,7 +71,9 @@ print(x, ...)
 
 - item_priors:
 
-  List of custom item priors (advanced use).
+  Reserved. Custom item-prior schemas are not currently implemented. Use
+  `NULL` or [`list()`](https://rdrr.io/r/base/list.html) to use DPMirt's
+  fixed item priors.
 
 - M:
 

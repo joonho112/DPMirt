@@ -4,12 +4,15 @@
 ^blueprint_candidates$
 ^Blueprint_FINAL\.md$
 ^log-and-test$
-^\.claude$
 ^\.DS_Store$
 ^LICENSE\.md$
 ^README\.Rmd$
 ^_pkgdown\.yml$
 ^docs$
+^figure$
 ^pkgdown$
 ^doc$
 ^Meta$
+^log$
+^tests/testthat/Rplots\.pdf$
+\.tar\.gz$

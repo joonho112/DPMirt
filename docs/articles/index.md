@@ -1,6 +1,6 @@
 # Articles
 
-### All vignettes
+### Getting Started
 
 - [DPMirt: Bayesian Semiparametric Item Response
   Theory](https://joonho112.github.io/DPMirt/articles/introduction.md):
@@ -11,6 +11,13 @@
   summary selection and the complete model family supported by the
   package.
 
+- [Quick Start: Your First IRT Model in 5
+  Minutes](https://joonho112.github.io/DPMirt/articles/quick-start.md):
+
+  A hands-on introduction to DPMirt: simulate data, fit Rasch models
+  with Normal and DPM priors, visualize results, and extract person
+  ability estimates — all in under five minutes of reading.
+
 - [The Complete Guide to Models and
   Workflows](https://joonho112.github.io/DPMirt/articles/models-and-workflow.md):
 
@@ -19,14 +26,16 @@
   dpmirt() wrapper and the step-by-step pipeline, with practical advice
   on when to use each workflow.
 
-- [Under the Hood: NIMBLE Backend and Advanced
-  Usage](https://joonho112.github.io/DPMirt/articles/nimble-internals.md):
+### Theory and Methods
 
-  A deep dive into DPMirt’s NIMBLE implementation — programmatic code
-  generation, custom samplers and distributions, the compile-once
-  sample-many architecture, post-hoc rescaling, and DP density
-  reconstruction — for users who want to understand or extend the
-  package internals.
+- [Mathematical Foundations: IRT Models and Dirichlet Process Mixture
+  Priors](https://joonho112.github.io/DPMirt/articles/theory-irt-dpm.md):
+
+  A comprehensive treatment of the mathematical foundations underlying
+  the DPMirt package, covering Item Response Theory models (Rasch, 2PL,
+  3PL), identification and post-hoc rescaling, Dirichlet Process Mixture
+  priors, the concentration parameter, and posterior summary theory (PM,
+  CB, GR).
 
 - [Posterior Summary Methods: Matching Estimators to Inferential
   Goals](https://joonho112.github.io/DPMirt/articles/posterior-summaries.md):
@@ -44,12 +53,16 @@
   how to integrate both approaches into your DPMirt workflow — including
   sensitivity analysis and custom base measure tuning.
 
-- [Quick Start: Your First IRT Model in 5
-  Minutes](https://joonho112.github.io/DPMirt/articles/quick-start.md):
+### Advanced
 
-  A hands-on introduction to DPMirt: simulate data, fit Rasch models
-  with Normal and DPM priors, visualize results, and extract person
-  ability estimates — all in under five minutes of reading.
+- [Under the Hood: NIMBLE Backend and Advanced
+  Usage](https://joonho112.github.io/DPMirt/articles/nimble-internals.md):
+
+  A deep dive into DPMirt’s NIMBLE implementation — programmatic code
+  generation, custom samplers and distributions, the compile-once
+  sample-many architecture, post-hoc rescaling, and DP density
+  reconstruction — for users who want to understand or extend the
+  package internals.
 
 - [Simulation Study: Evaluating Prior Models and Posterior
   Summaries](https://joonho112.github.io/DPMirt/articles/simulation-study.md):
@@ -58,12 +71,3 @@
   simulation studies with DPMirt — covering factorial design, IRTsimrel
   integration, the full analysis pipeline, loss function evaluation, and
   key findings from the APM manuscript.
-
-- [Mathematical Foundations: IRT Models and Dirichlet Process Mixture
-  Priors](https://joonho112.github.io/DPMirt/articles/theory-irt-dpm.md):
-
-  A comprehensive treatment of the mathematical foundations underlying
-  the DPMirt package, covering Item Response Theory models (Rasch, 2PL,
-  3PL), identification and post-hoc rescaling, Dirichlet Process Mixture
-  priors, the concentration parameter, and posterior summary theory (PM,
-  CB, GR).

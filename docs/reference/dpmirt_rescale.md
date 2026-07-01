@@ -18,14 +18,15 @@ dpmirt_rescale(samples_obj, rescale = TRUE)
 
 - rescale:
 
-  Logical. If TRUE (default), apply rescaling. If FALSE, return samples
-  as-is.
+  Logical. If TRUE (default), apply rescaling. If FALSE, wrap
+  untransformed posterior samples in a `dpmirt_fit` object using the
+  same downstream fit schema.
 
 ## Value
 
 A `dpmirt_fit` S3 object containing rescaled posterior samples,
-diagnostics (ESS, WAIC, cluster info), and model configuration. This
-object can be passed directly to
+chain/run metadata, diagnostics (ESS, WAIC, cluster info), and model
+configuration. This object can be passed directly to
 [`dpmirt_estimates`](https://joonho112.github.io/DPMirt/reference/dpmirt_estimates.md),
 [`dpmirt_resume`](https://joonho112.github.io/DPMirt/reference/dpmirt_resume.md),
 and other downstream functions.
@@ -43,6 +44,14 @@ unconstrained IRT models:
 \bar{\beta}\_s\\ and \\d_s = (\prod_i \lambda_i)^{-1/I}\\:
 \$\$\beta^\*\_i = (\beta_i - c_s) / d_s\$\$ \$\$\lambda^\*\_i =
 \lambda_i \cdot d_s\$\$ \$\$\theta^\*\_j = (\theta_j - c_s) / d_s\$\$
+
+**2PL/3PL slope-intercept parameterization**: Let \\c_s = \sum_i
+\gamma_i / \sum_i \lambda_i\\ and \\d_s = (\prod_i \lambda_i)^{-1/I}\\:
+\$\$\gamma^\*\_i = \gamma_i - \lambda_i c_s\$\$ \$\$\lambda^\*\_i =
+\lambda_i \cdot d_s\$\$ \$\$\theta^\*\_j = (\theta_j + c_s) / d_s\$\$
+
+Constrained models and calls with `rescale = FALSE` use the same
+`dpmirt_fit` wrapper but preserve the raw sampled scale.
 
 After rescaling: \\\bar{\beta}^\* = 0\\ and \\(\prod_i
 \lambda^\*\_i)^{1/I} = 1\\.

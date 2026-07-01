@@ -24,6 +24,9 @@ navbar:
     - search
     - github
   components:
+    intro:
+      text: Introduction
+      href: articles/introduction.html
     articles:
       text: Vignettes
       menu:
@@ -46,6 +49,21 @@ navbar:
         href: articles/nimble-internals.html
       - text: Simulation Study
         href: articles/simulation-study.html
+articles:
+- title: Getting Started
+  contents:
+  - introduction
+  - quick-start
+  - models-and-workflow
+- title: Theory and Methods
+  contents:
+  - theory-irt-dpm
+  - posterior-summaries
+  - prior-elicitation
+- title: Advanced
+  contents:
+  - nimble-internals
+  - simulation-study
 reference:
 - title: Package
   contents:
@@ -63,7 +81,7 @@ reference:
   - dpmirt_rescale
   - dpmirt_resume
 - title: Posterior Estimation
-  desc: Triple-goal estimation (PM, CB, GR) and raw posterior access
+  desc: Triple-goal estimation (PM, CB, GR) and rescaled posterior draw access
   contents:
   - dpmirt_estimates
   - dpmirt_draws
@@ -79,11 +97,11 @@ reference:
   - dpmirt_dp_density
   - dpmirt_alpha_prior
 - title: Simulation
-  desc: Data generation with reliability targeting
+  desc: Rasch/2PL reliability-targeted simulation and fallback generation
   contents:
   - dpmirt_simulate
 - title: Visualization
-  desc: Plotting functions for model results (ggplot2-based)
+  desc: Plotting functions for model results
   contents:
   - dpmirt_plot_density
   - dpmirt_plot_items

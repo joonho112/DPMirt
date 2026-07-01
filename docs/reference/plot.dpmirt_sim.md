@@ -24,6 +24,10 @@ plot(x, type = c("parameters", "response"), ...)
 
   Additional graphical parameters.
 
+## Value
+
+Invisibly returns the input `dpmirt_sim` object.
+
 ## See also
 
 [`dpmirt_simulate`](https://joonho112.github.io/DPMirt/reference/dpmirt_simulate.md)

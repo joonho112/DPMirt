@@ -21,11 +21,17 @@
 #'   The full object provides access to diagnostics, convergence
 #'   information, and can be passed directly to \code{dpmirt()} via
 #'   \code{alpha_prior}. Default \code{FALSE} for backward compatibility.
+#' @param warn_dominance Logical. If \code{TRUE}, pass through DPprior's
+#'   dominance-risk warning. Default \code{FALSE} keeps DPMirt wrapper output
+#'   quiet; use \code{return_fit = TRUE} to inspect diagnostics directly.
 #' @param ... Additional arguments passed to \code{DPprior::DPprior_fit}.
 #'
 #' @return If \code{return_fit = FALSE} (default), a named numeric vector
-#'   \code{c(a = ..., b = ...)} for Gamma(a, b). If \code{return_fit = TRUE},
-#'   a \code{DPprior_fit} object (see \pkg{DPprior} documentation).
+#'   \code{c(a = ..., b = ...)} for Gamma(a, b). If \code{return_fit = TRUE}
+#'   and \pkg{DPprior} is installed, a \code{DPprior_fit} object (see
+#'   \pkg{DPprior} documentation). If \pkg{DPprior} is unavailable,
+#'   DPMirt returns the fallback numeric vector \code{c(a = 1, b = 3)}
+#'   regardless of \code{return_fit}.
 #'
 #' @details
 #' In the CRP representation used by DPMirt, the concentration parameter
@@ -39,13 +45,19 @@
 #' \eqn{E[K | \alpha] \approx \mu_K} with the specified confidence level.
 #'
 #' The Paganin et al. (2023) default is Gamma(1, 3), which implies
-#' \eqn{E[\alpha] = 1/3} — a mildly informative prior favoring few clusters.
+#' \eqn{E[\alpha] = 1/3} - a mildly informative prior favoring few clusters.
 #'
 #' When \code{return_fit = TRUE}, the returned \code{DPprior_fit} object
 #' includes diagnostics such as dominance risk assessment and convergence
 #' information from the Newton solver. This object can be passed directly
 #' to \code{\link{dpmirt}} or \code{\link{dpmirt_spec}} as the
 #' \code{alpha_prior} argument.
+#'
+#' DPMirt suppresses DPprior's dominance-risk warning by default
+#' (\code{warn_dominance = FALSE}) so routine examples and vignettes remain
+#' quiet. To inspect dominance-risk diagnostics, use \code{return_fit = TRUE}
+#' and examine the returned \code{DPprior_fit} object, or set
+#' \code{warn_dominance = TRUE} to receive DPprior's original warning.
 #'
 #' @references
 #' Lee, J. (2026). Design-conditional prior elicitation for Dirichlet process
@@ -86,6 +98,7 @@ dpmirt_alpha_prior <- function(N,
                                mu_K = NULL,
                                confidence = "medium",
                                return_fit = FALSE,
+                               warn_dominance = FALSE,
                                ...) {
 
   if (!requireNamespace("DPprior", quietly = TRUE)) {
@@ -93,6 +106,10 @@ dpmirt_alpha_prior <- function(N,
             "[Paganin et al., 2023].\n",
             "Install DPprior for principled alpha elicitation: ",
             "remotes::install_github(\"joonho112/DPprior\")")
+    if (isTRUE(return_fit)) {
+      message("return_fit = TRUE was requested, but a DPprior_fit object ",
+              "requires DPprior. Returning the fallback numeric vector.")
+    }
     return(c(a = 1, b = 3))
   }
 
@@ -102,9 +119,16 @@ dpmirt_alpha_prior <- function(N,
     message(sprintf("Using default mu_K = %d (based on N = %d)", mu_K, N))
   }
 
-  # Call DPprior
-  fit <- DPprior::DPprior_fit(J = N, mu_K = mu_K,
-                               confidence = confidence, ...)
+  # Call DPprior. DPMirt keeps routine wrapper output quiet by default while
+  # preserving opt-in access to DPprior's original dominance warning.
+  dots <- list(...)
+  if ("warn_dominance" %in% names(formals(DPprior::DPprior_fit))) {
+    dots$warn_dominance <- isTRUE(warn_dominance)
+  }
+  fit <- do.call(
+    DPprior::DPprior_fit,
+    c(list(J = N, mu_K = mu_K, confidence = confidence), dots)
+  )
 
   # Return full DPprior_fit object if requested
   if (isTRUE(return_fit)) {

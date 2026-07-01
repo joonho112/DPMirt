@@ -121,17 +121,6 @@ digest_simple <- function(x) {
 }
 
 
-#' Validate model x prior x identification combination
-#' @noRd
-.validate_model_combination <- function(model, prior, parameterization,
-                                        identification) {
-  # All checks already done in individual validators, but this provides
-
-  # a central enforcement point
-  invisible(TRUE)
-}
-
-
 # --------------------------------------------------------------------------
 # Data Validation and Transformation
 # --------------------------------------------------------------------------
@@ -283,6 +272,44 @@ digest_simple <- function(x) {
   if (!is.null(seed)) {
     set.seed(seed)
   }
+}
+
+
+#' Evaluate an expression under a temporary random seed
+#' @noRd
+.with_seed <- function(seed, expr) {
+  if (is.null(seed)) {
+    return(force(expr))
+  }
+
+  had_seed <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+  old_seed <- if (had_seed) {
+    get(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+  } else {
+    NULL
+  }
+
+  on.exit({
+    if (had_seed) {
+      assign(".Random.seed", old_seed, envir = .GlobalEnv)
+    } else if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
+      rm(".Random.seed", envir = .GlobalEnv)
+    }
+  }, add = TRUE)
+
+  set.seed(seed)
+  force(expr)
+}
+
+
+#' Derive a deterministic per-chain seed
+#' @noRd
+.chain_seed <- function(seed, chain_id) {
+  if (is.null(seed)) {
+    return(NULL)
+  }
+
+  as.integer(seed) + as.integer(chain_id) - 1L
 }
 
 

@@ -23,13 +23,19 @@
 #' @param identification Character or NULL. Identification strategy:
 #'   \code{"constrained_item"}, \code{"constrained_ability"},
 #'   or \code{"unconstrained"}. If NULL, uses model-specific default
-#'   (constrained_item for Rasch, unconstrained for 2PL/3PL).
+#'   (constrained_item for Rasch, unconstrained for 2PL/3PL). Some
+#'   combinations are intentionally unavailable: DPM models reject
+#'   \code{"constrained_ability"}, and 3PL models currently reject
+#'   \code{"constrained_item"}.
 #' @param alpha_prior Alpha hyperprior specification. NULL for default
-#'   (auto-elicit or Gamma(1,3)), a numeric vector c(a, b) for
-#'   Gamma(a, b), or a DPprior_fit object. Only used when prior = "dpm".
+#'   Gamma(1,3), a numeric vector c(a, b) for Gamma(a, b), or a
+#'   DPprior_fit object. Only used when prior = "dpm". Automatic alpha
+#'   prior elicitation via \code{mu_K} is handled by \code{\link{dpmirt}}.
 #' @param base_measure List with DPM base measure hyperparameters:
 #'   s2_mu, nu1, nu2. Defaults from Paganin et al. (2023).
-#' @param item_priors List of custom item priors (advanced use).
+#' @param item_priors Reserved. Custom item-prior schemas are not currently
+#'   implemented. Use \code{NULL} or \code{list()} to use DPMirt's fixed item
+#'   priors.
 #' @param M Integer. Maximum number of clusters for CRP truncation.
 #'   Only used when prior = "dpm".
 #' @param data_format Character. \code{"auto"}, \code{"matrix"}, or
@@ -90,9 +96,7 @@ dpmirt_spec <- function(data,
                                                   model)
   identification <- .resolve_identification(identification, model, prior)
   data_format <- match.arg(data_format)
-
-  # Validate the full combination
-  .validate_model_combination(model, prior, parameterization, identification)
+  item_priors <- .validate_item_priors(item_priors)
 
   # --- Prepare data ---
   data_info <- .validate_data(data, data_format)
@@ -161,6 +165,35 @@ dpmirt_spec <- function(data,
 # ============================================================================
 # NIMBLE Code Generation (Programmatic)
 # ============================================================================
+
+#' Validate custom item-prior argument
+#' @noRd
+.validate_item_priors <- function(item_priors) {
+  if (is.null(item_priors)) {
+    return(list())
+  }
+
+  if (!is.list(item_priors)) {
+    stop(
+      "item_priors is reserved and must currently be NULL or list(). ",
+      "Custom item-prior schemas are not implemented.",
+      call. = FALSE
+    )
+  }
+
+  if (length(item_priors) > 0L) {
+    stop(
+      "Non-empty item_priors are reserved but not implemented. ",
+      "DPMirt currently uses fixed item priors: beta ~ N(0, 3), ",
+      "gamma ~ N(0, 3), log(lambda) ~ N(0.5, 0.5), and ",
+      "delta ~ Beta(4, 12).",
+      call. = FALSE
+    )
+  }
+
+  list()
+}
+
 
 #' Build NIMBLE code for specified model configuration
 #' @noRd
@@ -1014,6 +1047,35 @@ dpmirt_spec <- function(data,
   inits$myLogLik      <- 0
 
   inits
+}
+
+
+#' Regenerate initial values from a model specification
+#' @noRd
+.generate_inits_from_spec <- function(spec, seed = NULL) {
+  if (is.null(spec$config) || is.null(spec$data$y)) {
+    stop("Cannot generate initial values from an incomplete dpmirt_spec.",
+         call. = FALSE)
+  }
+
+  config <- spec$config
+  .with_seed(seed, .generate_inits(
+    y = spec$data$y,
+    model = config$model,
+    prior = config$prior,
+    parameterization = config$parameterization,
+    identification = config$identification,
+    N = config$N,
+    I = config$I,
+    M = config$M
+  ))
+}
+
+
+#' Generate chain-specific initial values
+#' @noRd
+.generate_chain_inits <- function(spec, chain_id = 1L, seed = NULL) {
+  .generate_inits_from_spec(spec, seed = .chain_seed(seed, chain_id))
 }
 
 

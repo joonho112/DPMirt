@@ -94,6 +94,20 @@ test_that(".triple_goal handles near-zero variance gracefully", {
 })
 
 
+test_that(".triple_goal falls back to PM for exact-zero PM variance", {
+  s <- matrix(0, nrow = 100, ncol = 5)
+
+  expect_warning(
+    result <- DPMirt:::.triple_goal(s),
+    "Near-zero variance"
+  )
+
+  qf <- attr(result, "quality_flags")
+  expect_true(qf$cb_fallback)
+  expect_equal(result$theta_cb, result$theta_pm)
+})
+
+
 test_that(".triple_goal stop_if_ties works", {
   # Create data likely to have tied mean ranks
   set.seed(42)
@@ -102,6 +116,16 @@ test_that(".triple_goal stop_if_ties works", {
   # This should work with stop_if_ties = FALSE
   result <- DPMirt:::.triple_goal(s, stop_if_ties = FALSE)
   expect_s3_class(result, "data.frame")
+})
+
+
+test_that(".triple_goal stop_if_ties rejects tied average ranks", {
+  s <- matrix(0, nrow = 20, ncol = 4)
+
+  expect_error(
+    suppressWarnings(DPMirt:::.triple_goal(s, stop_if_ties = TRUE)),
+    "Ties detected"
+  )
 })
 
 
@@ -128,6 +152,21 @@ test_that(".triple_goal CB expands distribution relative to PM", {
 
   result <- DPMirt:::.triple_goal(s)
 
+  expect_true(var(result$theta_cb) > var(result$theta_pm))
+})
+
+
+test_that(".triple_goal flags extreme CB expansion", {
+  base <- seq(-5, 5, length.out = 200)
+  s <- cbind(base - 0.01, base, base + 0.01)
+
+  expect_warning(
+    result <- DPMirt:::.triple_goal(s),
+    "CB scaling factor > 5"
+  )
+
+  qf <- attr(result, "quality_flags")
+  expect_true(qf$cb_extreme_factor > 5)
   expect_true(var(result$theta_cb) > var(result$theta_pm))
 })
 
@@ -195,6 +234,36 @@ test_that("dpmirt_estimates includes lambda for 2PL fit", {
 })
 
 
+test_that("dpmirt_estimates includes delta summaries for 3PL fit", {
+  set.seed(42)
+  N <- 30; I <- 10; niter <- 500
+  delta_samp <- matrix(rbeta(niter * I, 4, 12), nrow = niter, ncol = I)
+  fake_fit <- structure(
+    list(
+      theta_samp  = matrix(rnorm(niter * N), nrow = niter, ncol = N),
+      beta_samp   = matrix(rnorm(niter * I), nrow = niter, ncol = I),
+      lambda_samp = matrix(exp(rnorm(niter * I, 0.5, 0.3)),
+                            nrow = niter, ncol = I),
+      delta_samp  = delta_samp,
+      config = list(model = "3pl", prior = "normal",
+                    parameterization = "irt",
+                    N = N, I = I)
+    ),
+    class = "dpmirt_fit"
+  )
+
+  est <- dpmirt_estimates(fake_fit)
+
+  expect_s3_class(est, "dpmirt_estimates")
+  expect_equal(nrow(est$delta), I)
+  expect_true(all(c("delta_pm", "delta_psd", "delta_lower",
+                    "delta_upper") %in% names(est$delta)))
+  expect_equal(est$delta$delta_pm, colMeans(delta_samp), tolerance = 1e-12)
+  expect_true(all(est$delta$delta_lower <= est$delta$delta_pm))
+  expect_true(all(est$delta$delta_pm <= est$delta$delta_upper))
+})
+
+
 test_that("dpmirt_estimates credible intervals contain posterior mean", {
   set.seed(42)
   N <- 30; niter <- 2000
@@ -238,9 +307,46 @@ test_that("dpmirt_estimates methods='pm' skips CB/GR computation", {
 
   est <- dpmirt_estimates(fake_fit, methods = "pm", include_items = FALSE)
   expect_equal(est$methods, "pm")
+  expect_setequal(
+    names(est$theta),
+    c("theta_pm", "theta_psd", "theta_lower", "theta_upper")
+  )
+  expect_equal(est$theta$theta_pm, colMeans(fake_fit$theta_samp),
+               tolerance = 1e-12)
+  expect_false("theta_cb" %in% names(est$theta))
+  expect_false("theta_gr" %in% names(est$theta))
+  expect_false("rbar" %in% names(est$theta))
+  expect_false("rhat" %in% names(est$theta))
   # Beta should still have PM (but no CB/GR since include_items = FALSE)
   expect_true("beta_pm" %in% names(est$beta))
   expect_false("beta_cb" %in% names(est$beta))
+})
+
+
+test_that("dpmirt_estimates methods='pm' does not emit CB warnings", {
+  N <- 5; I <- 3; niter <- 50
+  fake_fit <- structure(
+    list(
+      theta_samp = matrix(0, nrow = niter, ncol = N),
+      beta_samp  = matrix(rnorm(niter * I), nrow = niter, ncol = I),
+      lambda_samp = NULL,
+      delta_samp  = NULL,
+      config = list(model = "rasch", prior = "normal",
+                    parameterization = "irt",
+                    N = N, I = I)
+    ),
+    class = "dpmirt_fit"
+  )
+
+  expect_silent(
+    est <- dpmirt_estimates(fake_fit, methods = "pm", stop_if_ties = TRUE)
+  )
+  expect_setequal(
+    names(est$theta),
+    c("theta_pm", "theta_psd", "theta_lower", "theta_upper")
+  )
+  expect_false("theta_cb" %in% names(est$theta))
+  expect_false("theta_gr" %in% names(est$theta))
 })
 
 
@@ -366,6 +472,44 @@ test_that("dpmirt_loss computes MSELR correctly", {
 })
 
 
+test_that("dpmirt_loss gives equal MSELR for monotone PM and CB ranks", {
+  est <- structure(
+    list(
+      theta = data.frame(
+        theta_pm = c(1, 2, 3),
+        theta_cb = c(10, 20, 30)
+      ),
+      beta = NULL, lambda = NULL, delta = NULL,
+      methods = c("pm", "cb")
+    ),
+    class = "dpmirt_estimates"
+  )
+
+  result <- dpmirt_loss(est, true_theta = c(3, 1, 2), metrics = "mselr")
+  expect_equal(
+    result$mselr[result$method == "pm"],
+    result$mselr[result$method == "cb"]
+  )
+})
+
+
+test_that("dpmirt_loss with KS metric returns KS-only loss columns", {
+  est <- structure(
+    list(
+      theta = data.frame(theta_pm = c(1, 2, 3, 4)),
+      beta = NULL, lambda = NULL, delta = NULL,
+      methods = "pm"
+    ),
+    class = "dpmirt_estimates"
+  )
+
+  result <- dpmirt_loss(est, true_theta = c(1, 2, 3, 4), metrics = "ks")
+
+  expect_equal(names(result), c("parameter", "method", "ks"))
+  expect_equal(result$ks, 0)
+})
+
+
 test_that("dpmirt_loss computes item beta losses", {
   theta_df <- data.frame(
     theta_pm = rnorm(20),
@@ -486,6 +630,25 @@ test_that("dpmirt_draws rejects non-fit input", {
 })
 
 
+test_that("dpmirt_draws rejects reserved raw draw extraction mode", {
+  fake_fit <- structure(
+    list(
+      theta_samp = matrix(rnorm(20), nrow = 10, ncol = 2),
+      beta_samp = NULL,
+      lambda_samp = NULL,
+      delta_samp = NULL,
+      config = list(model = "rasch", N = 2, I = 0)
+    ),
+    class = "dpmirt_fit"
+  )
+
+  expect_error(
+    dpmirt_draws(fake_fit, vars = "theta", use_rescaled = FALSE),
+    "use_rescaled = FALSE.*reserved.*raw draw extraction"
+  )
+})
+
+
 test_that("dpmirt_draws returns matrix format", {
   set.seed(42)
   N <- 20; I <- 5; niter <- 100
@@ -526,6 +689,9 @@ test_that("dpmirt_draws returns long format", {
   draws <- dpmirt_draws(fake_fit, vars = "theta", format = "long")
   expect_s3_class(draws, "data.frame")
   expect_true(all(c("iteration", "index", "value", "variable") %in% names(draws)))
+  expect_true(all(c("chain_id", "within_chain_draw", "mcmc_iteration") %in%
+                    names(draws)))
+  expect_equal(unique(draws$chain_id), 1L)
   expect_equal(nrow(draws), niter * N)
 })
 
@@ -591,7 +757,47 @@ test_that("dpmirt_draws long format stacks multiple vars", {
   expect_s3_class(draws, "data.frame")
   expect_true("theta" %in% draws$variable)
   expect_true("beta" %in% draws$variable)
+  expect_true(all(c("chain_id", "within_chain_draw", "mcmc_iteration") %in%
+                    names(draws)))
   expect_equal(nrow(draws), niter * N + niter * I)
+})
+
+
+test_that("dpmirt_draws long format uses chain-aware row metadata", {
+  set.seed(42)
+  N <- 2; I <- 2; niter <- 4
+  fake_fit <- structure(
+    list(
+      theta_samp = matrix(rnorm(niter * N), nrow = niter, ncol = N),
+      beta_samp  = matrix(rnorm(niter * I), nrow = niter, ncol = I),
+      lambda_samp = NULL,
+      delta_samp  = NULL,
+      config = list(model = "rasch", N = N, I = I),
+      draw_index = list(
+        main = data.frame(
+          row = 1:4,
+          chain_id = c(1L, 1L, 2L, 2L),
+          within_chain_draw = c(1L, 2L, 1L, 2L),
+          mcmc_iteration = c(10L, 20L, 10L, 20L)
+        ),
+        theta = data.frame(
+          row = 1:4,
+          chain_id = c(1L, 1L, 2L, 2L),
+          within_chain_draw = c(1L, 2L, 1L, 2L),
+          mcmc_iteration = c(15L, 30L, 15L, 30L)
+        )
+      )
+    ),
+    class = "dpmirt_fit"
+  )
+
+  theta_long <- dpmirt_draws(fake_fit, vars = "theta", format = "long")
+  beta_long <- dpmirt_draws(fake_fit, vars = "beta", format = "long")
+
+  expect_equal(theta_long$chain_id[1:niter], c(1L, 1L, 2L, 2L))
+  expect_equal(theta_long$mcmc_iteration[1:niter], c(15L, 30L, 15L, 30L))
+  expect_equal(beta_long$chain_id[1:niter], c(1L, 1L, 2L, 2L))
+  expect_equal(beta_long$mcmc_iteration[1:niter], c(10L, 20L, 10L, 20L))
 })
 
 

@@ -13,11 +13,15 @@
 #' \itemize{
 #'   \item Three IRT models: Rasch, 2PL, and 3PL
 #'   \item Two latent trait priors: parametric (Normal) and semiparametric (DPM)
-#'   \item Three identification strategies: constrained_item, constrained_ability, unconstrained
+#'   \item Three identification strategies where compatible:
+#'     constrained_item, constrained_ability, unconstrained
 #'   \item Three posterior summary methods: PM, CB (Ghosh 1992), GR (Shen & Louis 1998)
 #'   \item Compile-once, sample-many MCMC workflow
-#'   \item Principled alpha hyperprior elicitation via DPprior
-#'   \item Reliability-targeted simulation via IRTsimrel
+#'   \item Optional alpha hyperprior elicitation via DPprior, with
+#'     Gamma(1, 3) fallback
+#'   \item Rasch/2PL reliability-targeted simulation when IRTsimrel is
+#'     installed; fallback simulation otherwise, including 3PL without
+#'     reliability targeting
 #' }
 #'
 #' The backbone NIMBLE model code is adapted from Paganin et al. (2023).
@@ -40,8 +44,8 @@
 #'     \code{\link{dpmirt_draws}}.
 #'   \item \strong{Diagnose}: Evaluate convergence and model comparison via
 #'     \code{\link{dpmirt_diagnostics}} and \code{\link{dpmirt_compare}}.
-#'   \item \strong{Visualize}: Use \code{\link[=plot.dpmirt_fit]{plot}} and
-#'     the \code{dpmirt_plot_*} family for publication-quality figures.
+#'   \item \strong{Visualize}: Use \code{\link[=plot.dpmirt_fit]{plot(fit)}}
+#'     and the \code{dpmirt_plot_*} family for publication-quality figures.
 #' }
 #'
 #' @section Model Fitting:
@@ -67,8 +71,10 @@
 #' @section Diagnostics and Model Comparison:
 #' \describe{
 #'   \item{\code{\link{dpmirt_diagnostics}}}{MCMC convergence diagnostics
-#'     (ESS, Rhat, trace summaries)}
-#'   \item{\code{\link{dpmirt_compare}}}{WAIC-based model comparison}
+#'     (ESS, optional chain-aware R-hat, trace summaries, and WAIC
+#'     provenance)}
+#'   \item{\code{\link{dpmirt_compare}}}{WAIC-based model comparison with
+#'     aggregation provenance}
 #' }
 #'
 #' @section Simulation:
@@ -88,7 +94,8 @@
 #' @section DP Density Estimation:
 #' \describe{
 #'   \item{\code{\link{dpmirt_dp_density}}}{Posterior density estimation
-#'     from the Dirichlet Process mixture}
+#'     from the Dirichlet Process mixture, most directly interpretable for
+#'     Rasch/location-shift settings}
 #' }
 #'
 #' @section Visualization:
@@ -96,10 +103,10 @@
 #' \describe{
 #'   \item{\code{\link[=plot.dpmirt_fit]{plot(fit)}}}{Trace plots, density
 #'     plots, and caterpillar plots for fitted models}
-#'   \item{\code{\link[=plot.dpmirt_estimates]{plot(estimates)}}}{Shrinkage,
-#'     rank, and comparison plots for PM/CB/GR estimates}
-#'   \item{\code{\link[=plot.dpmirt_sim]{plot(sim)}}}{ICC and distribution
-#'     plots for simulated data}
+#'   \item{\code{\link[=plot.dpmirt_estimates]{plot(estimates)}}}{Caterpillar
+#'     plots of PM/CB/GR estimates and PM-vs-CB shrinkage plots}
+#'   \item{\code{\link[=plot.dpmirt_sim]{plot(sim)}}}{True-parameter
+#'     histograms and response-matrix heatmaps for simulated data}
 #' }
 #'
 #' Standalone ggplot2 functions (require ggplot2):
@@ -130,17 +137,11 @@
 #' hierarchical models. \emph{Journal of the Royal Statistical Society:
 #' Series B, 60}(2), 455--471.
 #'
-#' @docType package
-#' @name DPMirt-package
-#' @aliases DPMirt
-#'
 #' @import nimble
 #' @importFrom coda effectiveSize as.mcmc as.mcmc.list
 #' @importFrom grDevices adjustcolor
-#' @importFrom graphics abline arrows axis barplot curve hist image
-#'   layout legend lines matplot mtext par points polygon segments text
-#' @importFrom stats quantile var sd rnorm runif rbeta rgamma kmeans
-#'   dnorm qnorm pnorm ecdf median density dbinom rbinom rexp
+#' @importFrom graphics abline arrows axis barplot curve hist image layout legend lines matplot mtext par points polygon segments text
+#' @importFrom stats quantile var sd rnorm runif rbeta rgamma kmeans dnorm qnorm pnorm ecdf median density dbinom rbinom rexp
 #' @importFrom utils packageVersion head
 #' @importFrom methods is
 "_PACKAGE"

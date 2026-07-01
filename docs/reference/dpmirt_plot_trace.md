@@ -1,7 +1,7 @@
 # Plot Log-Likelihood MCMC Trace
 
-Displays the log-likelihood trace across MCMC iterations for convergence
-assessment. A well-mixed chain shows stable oscillation around a
+Displays the log-likelihood trace across MCMC iterations as a first-pass
+visual mixing check. A well-mixed run shows stable oscillation around a
 stationary level. Requires ggplot2.
 
 ## Usage

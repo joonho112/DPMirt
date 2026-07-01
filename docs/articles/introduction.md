@@ -93,7 +93,6 @@ if (requireNamespace("ggplot2", quietly = TRUE)) {
     theme(legend.position = "bottom", legend.title = element_blank(),
           plot.title = element_text(face = "bold"))
 }
-#> Warning: package 'ggplot2' was built under R version 4.5.2
 ```
 
 ![Recovered ability distributions under normal and DPM priors for a
@@ -168,11 +167,14 @@ Most users will interact primarily with the **User Interface** layer. A
 single call to
 [`dpmirt()`](https://joonho112.github.io/DPMirt/reference/dpmirt.md)
 handles the entire pipeline—from building the NIMBLE model code, through
-compilation, MCMC sampling, post-hoc rescaling, and WAIC
+compilation, MCMC sampling, post-hoc rescaling, and optional WAIC
 computation—returning a fitted model object ready for summarization and
-plotting. For users who need more control, the **Step-by-Step** layer
-exposes each stage as a separate function, following a compile-once,
-sample-many pattern that avoids redundant C++ compilation.
+plotting. The fitted object also stores chain/run metadata
+(`schema_version`, `chain_info`, `draw_index`, and `run_history`) used
+by diagnostics and draw extraction. For users who need more control, the
+**Step-by-Step** layer exposes each stage as a separate function,
+following a compile-once, sample-many pattern while the compiled NIMBLE
+object is live in the current R session.
 
 ## Three Inferential Goals
 
@@ -245,11 +247,11 @@ model_df <- data.frame(
   Parameterizations = c("IRT", "IRT", "IRT, SI", "IRT, SI",
                          "IRT, SI", "IRT, SI"),
   Identification = c(
-    "Constrained item*, ability, unconstrained",
+    "Constrained item*, constrained ability, unconstrained",
     "Constrained item*, unconstrained",
-    "Unconstrained*, ability, constrained item",
-    "Unconstrained*",
-    "Unconstrained*, ability",
+    "Unconstrained*, constrained ability, constrained item",
+    "Unconstrained*, constrained item",
+    "Unconstrained*, constrained ability",
     "Unconstrained*")
 )
 knitr::kable(model_df,
@@ -261,11 +263,11 @@ knitr::kable(model_df,
 
 | Model | Prior | Item Parameters | Parameterizations | Identification |
 |:---|:---|:---|:---|:---|
-| Rasch | Normal | $`\beta_i`$ | IRT | Constrained item\*, ability, unconstrained |
+| Rasch | Normal | $`\beta_i`$ | IRT | Constrained item\*, constrained ability, unconstrained |
 | Rasch | DPM | $`\beta_i`$ | IRT | Constrained item\*, unconstrained |
-| 2PL | Normal | $`\beta_i, \lambda_i`$ | IRT, SI | Unconstrained\*, ability, constrained item |
-| 2PL | DPM | $`\beta_i, \lambda_i`$ | IRT, SI | Unconstrained\* |
-| 3PL | Normal | $`\beta_i, \lambda_i, \delta_i`$ | IRT, SI | Unconstrained\*, ability |
+| 2PL | Normal | $`\beta_i, \lambda_i`$ | IRT, SI | Unconstrained\*, constrained ability, constrained item |
+| 2PL | DPM | $`\beta_i, \lambda_i`$ | IRT, SI | Unconstrained\*, constrained item |
+| 3PL | Normal | $`\beta_i, \lambda_i, \delta_i`$ | IRT, SI | Unconstrained\*, constrained ability |
 | 3PL | DPM | $`\beta_i, \lambda_i, \delta_i`$ | IRT, SI | Unconstrained\* |
 
 Supported model family (\* = default identification strategy) {.table}
@@ -281,12 +283,20 @@ Supported model family (\* = default identification strategy) {.table}
   item parameters, constraining abilities, or leaving the model
   unconstrained with post-hoc rescaling. The unconstrained + rescaling
   approach is the default for 2PL/3PL, following Paganin et al. (2023).
+  Some combinations are intentionally unavailable: DPM models reject
+  `constrained_ability`, and 3PL models reject `constrained_item`.
 
 - **DPM prior.** Uses the Chinese Restaurant Process (CRP)
   representation with cluster atoms from a Normal-Inverse-Gamma base
   measure. The concentration parameter $`\alpha`$ receives a Gamma
-  hyperprior—either the default $`\text{Gamma}(1, 3)`$ or a principled
-  choice via `DPprior`.
+  hyperprior—either the default $`\text{Gamma}(1, 3)`$ or an optional
+  principled choice via `DPprior`.
+
+- **3PL guessing.** The 3PL model includes item-specific lower asymptote
+  parameters $`\delta_i`$. DPMirt reports posterior summaries and plots
+  for $`\delta`$ where applicable. For simulation, reliability targeting
+  is available through IRTsimrel for Rasch/2PL; 3PL currently uses
+  DPMirt’s fallback generator and does not target `target_rho`.
 
 ## Backbone References
 
@@ -309,11 +319,11 @@ combination of DPM prior with the GR estimator yields substantial gains
 for ranking and distribution recovery.
 
 **Lee (2026)** developed the DPprior package for principled
-specification of the Gamma hyperprior on $`\alpha`$. Rather than an
-arbitrary default, researchers express beliefs about expected latent
-subgroups and uncertainty, and DPprior translates these into calibrated
-Gamma($`a`$, $`b`$) hyperparameters. This is especially important when
-sample size is moderate and item quality is limited, where the prior on
+specification of the Gamma hyperprior on $`\alpha`$. DPMirt can use this
+optional package when researchers express beliefs about expected latent
+subgroups and uncertainty; otherwise it falls back to the conservative
+$`\text{Gamma}(1, 3)`$ default. This is especially important when sample
+size is moderate and item quality is limited, where the prior on
 $`\alpha`$ can substantially influence posterior inference.
 
 ## Installation
@@ -343,9 +353,16 @@ install.packages("ggplot2")
 # Principled alpha elicitation
 remotes::install_github("joonho112/DPprior")
 
-# Reliability-targeted simulation
+# Reliability-targeted Rasch/2PL simulation
 remotes::install_github("joonho112/IRTsimrel")
 ```
+
+DPMirt works without the two optional GitHub packages above. Without
+DPprior, alpha-prior elicitation falls back to $`\text{Gamma}(1, 3)`$.
+Without IRTsimrel,
+[`dpmirt_simulate()`](https://joonho112.github.io/DPMirt/reference/dpmirt_simulate.md)
+uses DPMirt’s internal fallback simulator, which does not target
+reliability.
 
 After installation, load the package:
 
@@ -405,7 +422,7 @@ methods_df <- data.frame(
                "[NIMBLE Internals](nimble-internals.html)"),
   Purpose = c(
     "IRT model theory, DPM priors, identification, and posterior summary derivations",
-    "Custom samplers, compile-once pattern, and advanced NIMBLE configuration"),
+    "Custom sampler hooks, compile-once pattern, and advanced NIMBLE configuration"),
   Time = c("45--60 min", "30--40 min")
 )
 knitr::kable(methods_df, col.names = c("Vignette", "Purpose", "Time"),
@@ -415,7 +432,7 @@ knitr::kable(methods_df, col.names = c("Vignette", "Purpose", "Time"),
 | Vignette | Purpose | Time |
 |:---|:---|:---|
 | [Mathematical Foundations](https://joonho112.github.io/DPMirt/articles/theory-irt-dpm.md) | IRT model theory, DPM priors, identification, and posterior summary derivations | 45–60 min |
-| [NIMBLE Internals](https://joonho112.github.io/DPMirt/articles/nimble-internals.md) | Custom samplers, compile-once pattern, and advanced NIMBLE configuration | 30–40 min |
+| [NIMBLE Internals](https://joonho112.github.io/DPMirt/articles/nimble-internals.md) | Custom sampler hooks, compile-once pattern, and advanced NIMBLE configuration | 30–40 min |
 
 Methodological researchers track {.table}
 

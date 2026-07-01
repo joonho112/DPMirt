@@ -36,7 +36,10 @@ print(x, ...)
 
 - methods:
 
-  Character vector of methods to compute. Default `c("pm", "cb", "gr")`.
+  Character vector of person-summary methods to compute. Default
+  `c("pm", "cb", "gr")`. When `methods = "pm"`, theta summaries contain
+  only posterior mean, posterior SD, and credible interval columns; CB,
+  GR, and rank columns are not computed.
 
 - alpha:
 
@@ -54,7 +57,8 @@ print(x, ...)
 
 - include_items:
 
-  Logical. If TRUE, apply CB/GR to beta as well. Default TRUE.
+  Logical. If TRUE, apply requested CB/GR methods to beta as well. Theta
+  summaries are always governed by `methods`. Default TRUE.
 
 - x:
 
@@ -66,7 +70,11 @@ print(x, ...)
 
 ## Value
 
-A `dpmirt_estimates` S3 object.
+A `dpmirt_estimates` S3 object with components `theta`, `beta`,
+`lambda`, `delta`, `methods`, `alpha`, and `quality_flags`. Theta
+summaries include the requested methods. When requested, beta summaries
+may include PM, CB, and GR columns. Lambda and delta summaries include
+posterior mean, posterior SD, and credible interval columns.
 
 ## Details
 
@@ -128,7 +136,7 @@ head(est$theta)
 # Access item estimates
 head(est$beta)
 
-# PM only (faster)
+# PM-only summaries (faster; no CB/GR/rank columns)
 est_pm <- dpmirt_estimates(fit, methods = "pm")
 } # }
 ```

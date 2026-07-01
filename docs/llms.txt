@@ -16,10 +16,10 @@ methods — PM, CB, and GR — designed for different inferential goals.
 | **Three IRT models** | Rasch, 2PL, and 3PL |
 | **Two latent priors** | Parametric (Normal) and semiparametric (DPM) |
 | **Triple-goal estimation** | Posterior Mean (PM), Constrained Bayes (CB; Ghosh 1992), Triple-Goal (GR; Shen & Louis 1998) |
-| **Compile-once workflow** | Compile the NIMBLE model once, then draw additional samples without recompilation |
-| **Principled prior elicitation** | Automatic concentration-parameter selection via [DPprior](https://github.com/joonho112/DPprior) |
-| **Reliability-targeted simulation** | Generate test data at a specified marginal reliability via [IRTsimrel](https://github.com/joonho112/IRTsimrel) |
-| **Rich diagnostics** | ESS, R-hat, WAIC, posterior predictive checks, trace and density plots |
+| **Compile-once workflow** | Compile the NIMBLE model once, then draw additional sequential samples while the compiled object is live |
+| **Principled prior elicitation** | Optional concentration-parameter calibration via [DPprior](https://github.com/joonho112/DPprior), with a Gamma(1, 3) fallback |
+| **Reliability-targeted simulation** | Generate Rasch/2PL test data at a specified marginal reliability via [IRTsimrel](https://github.com/joonho112/IRTsimrel); 3PL uses DPMirt’s fallback simulator and does not target reliability |
+| **Rich diagnostics** | ESS, optional chain-aware R-hat, WAIC provenance, posterior predictive checks, trace and density plots |
 
 ## Installation
 
@@ -37,6 +37,11 @@ guide](https://r-nimble.org/download) if you do not already have one set
 up.
 
 ### Optional packages
+
+`DPprior` and `IRTsimrel` are optional GitHub packages. DPMirt installs
+and runs without them: without `DPprior`, alpha-prior elicitation falls
+back to `Gamma(1, 3)`; without `IRTsimrel`, simulation uses DPMirt’s
+internal fallback generator without reliability targeting.
 
 ``` r
 
@@ -102,14 +107,21 @@ spec <- dpmirt_spec(sim$response, model = "2pl", prior = "dpm")
 compiled <- dpmirt_compile(spec)
 
 # Sample
-fit <- dpmirt_sample(compiled, niter = 10000, nburnin = 3000)
+samples <- dpmirt_sample(compiled, niter = 10000, nburnin = 3000)
 
 # Rescale (post-hoc identification)
-fit <- dpmirt_rescale(fit)
+fit <- dpmirt_rescale(samples)
 
 # Continue sampling without recompiling
-fit2 <- dpmirt_resume(fit, niter_more = 5000)
+resumed <- dpmirt_resume(fit, niter_more = 5000)
+fit2 <- dpmirt_rescale(resumed)
 ```
+
+Compiled NIMBLE objects contain external pointers and cannot be restored
+from RDS.
+[`dpmirt_resume()`](https://joonho112.github.io/DPMirt/reference/dpmirt_resume.md)
+therefore requires the original live compiled object stored in the
+`dpmirt_samples` or `dpmirt_fit` object.
 
 ## Posterior Summary Methods
 
@@ -134,9 +146,52 @@ est <- dpmirt_estimates(fit, methods = c("pm", "cb", "gr"))
 dpmirt_loss(est, true_theta = sim$theta, metrics = c("msel", "ks"))
 ```
 
+## Diagnostics and Draws
+
+``` r
+
+diag <- dpmirt_diagnostics(fit)
+diag$chain_info
+diag$waic_aggregation
+
+theta_draws <- dpmirt_draws(fit, vars = "theta", format = "long")
+head(theta_draws)
+```
+
+`dpmirt_fit` objects store chain/run provenance through
+`schema_version`, `chain_info`, `draw_index`, and `run_history`. R-hat
+is reported when at least two labeled chains have retained draws;
+single-chain fits and the compact vignette fixtures return `NULL` R-hat
+and should be judged with ESS, trace plots, and substantive diagnostics.
+
+[`dpmirt_draws()`](https://joonho112.github.io/DPMirt/reference/dpmirt_draws.md)
+currently extracts the rescaled posterior draws used by summary and
+plotting methods. Raw, unrescaled draw extraction and disk-backed draw
+storage (`save_draws = FALSE` or `save_path`) are reserved for a future
+release.
+
+## Current Scope Notes
+
+- `sampler_config` supports an advanced function hook with signature
+  `function(conf, model, spec)`. List-based sampler schemas are
+  reserved.
+- `item_priors` is reserved; use `NULL` or
+  [`list()`](https://rdrr.io/r/base/list.html) for DPMirt’s fixed item
+  priors.
+- 3PL models include item guessing parameters (`delta`). Some
+  identification combinations are intentionally unavailable, including
+  `constrained_item` for 3PL and `constrained_ability` for DPM models.
+- 3PL simulation uses DPMirt’s fallback generator with Beta-distributed
+  guessing parameters and does not use `target_rho`.
+- [`dpmirt_dp_density()`](https://joonho112.github.io/DPMirt/reference/dpmirt_dp_density.md)
+  can be computationally expensive because it rebuilds the NIMBLE
+  DP-measure workflow and loads retained DP draws through public
+  `modelValues` accessors; compact vignette fixtures store thinned
+  posterior draws and plot-ready DP-density summaries.
+
 ## Vignettes
 
-DPMirt ships with eight vignettes organised into two reading tracks:
+DPMirt ships with eight source vignettes:
 
 | Vignette | Topic |
 |:---|:---|
@@ -173,8 +228,8 @@ MIT © JoonHo Lee
 
 ## Package
 
-- [`DPMirt-package`](https://joonho112.github.io/DPMirt/reference/DPMirt-package.md)
-  [`DPMirt`](https://joonho112.github.io/DPMirt/reference/DPMirt-package.md)
+- [`DPMirt`](https://joonho112.github.io/DPMirt/reference/DPMirt-package.md)
+  [`DPMirt-package`](https://joonho112.github.io/DPMirt/reference/DPMirt-package.md)
   : DPMirt: Bayesian Semiparametric IRT Models Using DPM Priors
 
 ## Main Fitting
@@ -204,7 +259,7 @@ Modular pipeline for fine-grained control
 
 ## Posterior Estimation
 
-Triple-goal estimation (PM, CB, GR) and raw posterior access
+Triple-goal estimation (PM, CB, GR) and rescaled posterior draw access
 
 - [`dpmirt_estimates()`](https://joonho112.github.io/DPMirt/reference/dpmirt_estimates.md)
   [`print(`*`<dpmirt_estimates>`*`)`](https://joonho112.github.io/DPMirt/reference/dpmirt_estimates.md)
@@ -236,7 +291,7 @@ Dirichlet Process Mixture density and prior elicitation
 
 ## Simulation
 
-Data generation with reliability targeting
+Rasch/2PL reliability-targeted simulation and fallback generation
 
 - [`dpmirt_simulate()`](https://joonho112.github.io/DPMirt/reference/dpmirt_simulate.md)
   [`print(`*`<dpmirt_sim>`*`)`](https://joonho112.github.io/DPMirt/reference/dpmirt_simulate.md)
@@ -244,7 +299,7 @@ Data generation with reliability targeting
 
 ## Visualization
 
-Plotting functions for model results (ggplot2-based)
+Plotting functions for model results
 
 - [`dpmirt_plot_density()`](https://joonho112.github.io/DPMirt/reference/dpmirt_plot_density.md)
   : Plot Posterior Mean Density
@@ -288,7 +343,7 @@ Print, summary, coef, and plot methods for DPMirt objects
 
 # Articles
 
-### All vignettes
+### Getting Started
 
 - [DPMirt: Bayesian Semiparametric Item Response
   Theory](https://joonho112.github.io/DPMirt/articles/introduction.md):
@@ -299,6 +354,13 @@ Print, summary, coef, and plot methods for DPMirt objects
   summary selection and the complete model family supported by the
   package.
 
+- [Quick Start: Your First IRT Model in 5
+  Minutes](https://joonho112.github.io/DPMirt/articles/quick-start.md):
+
+  A hands-on introduction to DPMirt: simulate data, fit Rasch models
+  with Normal and DPM priors, visualize results, and extract person
+  ability estimates — all in under five minutes of reading.
+
 - [The Complete Guide to Models and
   Workflows](https://joonho112.github.io/DPMirt/articles/models-and-workflow.md):
 
@@ -307,14 +369,16 @@ Print, summary, coef, and plot methods for DPMirt objects
   dpmirt() wrapper and the step-by-step pipeline, with practical advice
   on when to use each workflow.
 
-- [Under the Hood: NIMBLE Backend and Advanced
-  Usage](https://joonho112.github.io/DPMirt/articles/nimble-internals.md):
+### Theory and Methods
 
-  A deep dive into DPMirt’s NIMBLE implementation — programmatic code
-  generation, custom samplers and distributions, the compile-once
-  sample-many architecture, post-hoc rescaling, and DP density
-  reconstruction — for users who want to understand or extend the
-  package internals.
+- [Mathematical Foundations: IRT Models and Dirichlet Process Mixture
+  Priors](https://joonho112.github.io/DPMirt/articles/theory-irt-dpm.md):
+
+  A comprehensive treatment of the mathematical foundations underlying
+  the DPMirt package, covering Item Response Theory models (Rasch, 2PL,
+  3PL), identification and post-hoc rescaling, Dirichlet Process Mixture
+  priors, the concentration parameter, and posterior summary theory (PM,
+  CB, GR).
 
 - [Posterior Summary Methods: Matching Estimators to Inferential
   Goals](https://joonho112.github.io/DPMirt/articles/posterior-summaries.md):
@@ -332,12 +396,16 @@ Print, summary, coef, and plot methods for DPMirt objects
   how to integrate both approaches into your DPMirt workflow — including
   sensitivity analysis and custom base measure tuning.
 
-- [Quick Start: Your First IRT Model in 5
-  Minutes](https://joonho112.github.io/DPMirt/articles/quick-start.md):
+### Advanced
 
-  A hands-on introduction to DPMirt: simulate data, fit Rasch models
-  with Normal and DPM priors, visualize results, and extract person
-  ability estimates — all in under five minutes of reading.
+- [Under the Hood: NIMBLE Backend and Advanced
+  Usage](https://joonho112.github.io/DPMirt/articles/nimble-internals.md):
+
+  A deep dive into DPMirt’s NIMBLE implementation — programmatic code
+  generation, custom samplers and distributions, the compile-once
+  sample-many architecture, post-hoc rescaling, and DP density
+  reconstruction — for users who want to understand or extend the
+  package internals.
 
 - [Simulation Study: Evaluating Prior Models and Posterior
   Summaries](https://joonho112.github.io/DPMirt/articles/simulation-study.md):
@@ -346,12 +414,3 @@ Print, summary, coef, and plot methods for DPMirt objects
   simulation studies with DPMirt — covering factorial design, IRTsimrel
   integration, the full analysis pipeline, loss function evaluation, and
   key findings from the APM manuscript.
-
-- [Mathematical Foundations: IRT Models and Dirichlet Process Mixture
-  Priors](https://joonho112.github.io/DPMirt/articles/theory-irt-dpm.md):
-
-  A comprehensive treatment of the mathematical foundations underlying
-  the DPMirt package, covering Item Response Theory models (Rasch, 2PL,
-  3PL), identification and post-hoc rescaling, Dirichlet Process Mixture
-  priors, the concentration parameter, and posterior summary theory (PM,
-  CB, GR).

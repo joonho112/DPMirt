@@ -13,15 +13,21 @@
 #' done once per model specification.
 #'
 #' @param spec A \code{dpmirt_spec} object from \code{\link{dpmirt_spec}}.
-#' @param sampler_config Optional custom MCMC sampler configuration.
+#' @param sampler_config Optional advanced hook for NIMBLE sampler
+#'   customization. Must be \code{NULL} or a function with signature
+#'   \code{function(conf, model, spec)}. The function receives the configured
+#'   NIMBLE \code{MCMCconf}, the uncompiled NIMBLE model, and the DPMirt spec,
+#'   and should return the modified \code{MCMCconf} or \code{NULL} after
+#'   mutating \code{conf} in place. List-based sampler configuration is
+#'   reserved but not implemented.
 #' @param use_centered_sampler Character or logical. Whether to use the
 #'   centered sampler for SI parameterization. "auto" enables it when
-#'   appropriate (SI param + 2PL/3PL). Only relevant for Phase 3+.
+#'   appropriate (SI parameterization with 2PL/3PL models).
 #' @param enable_waic Logical. Whether to enable WAIC computation.
 #' @param enable_logprob_monitor Logical. Whether to add log-probability
 #'   monitoring samplers.
 #' @param verbose Logical. Print progress messages.
-#' @param ... Additional arguments passed to NIMBLE.
+#' @param ... Reserved for future extensions; currently unused.
 #'
 #' @return A \code{dpmirt_compiled} S3 object containing the compiled model,
 #'   compiled MCMC, specification reference, and session signature.
@@ -64,6 +70,7 @@ dpmirt_compile <- function(spec,
     stop("Input must be a dpmirt_spec object from dpmirt_spec().",
          call. = FALSE)
   }
+  sampler_config <- .validate_sampler_config_arg(sampler_config)
 
   timer_start <- .start_timer()
 
@@ -103,7 +110,19 @@ dpmirt_compile <- function(spec,
   .vmsg("  MCMC configured.", verbose = verbose)
 
   # --- Step 3: Build MCMC ---
-  nimble_mcmc <- buildMCMC(mcmc_conf)
+  nimble_mcmc <- tryCatch(
+    buildMCMC(mcmc_conf),
+    error = function(e) {
+      if (!is.null(sampler_config)) {
+        stop(
+          "buildMCMC() failed after applying sampler_config: ",
+          conditionMessage(e),
+          call. = FALSE
+        )
+      }
+      stop(e)
+    }
+  )
   .vmsg("  MCMC built.", verbose = verbose)
 
   # --- Step 4: Compile model and MCMC ---
@@ -127,6 +146,13 @@ dpmirt_compile <- function(spec,
       spec             = spec,
       mcmc_conf        = mcmc_conf,
       compilation_time = compilation_time,
+      waic_enabled     = isTRUE(enable_waic),
+      waic_contract    = list(
+        type = "conditional",
+        unit = "nimble_default_data_nodes",
+        grouped_by_person = FALSE,
+        online = isTRUE(enable_waic)
+      ),
       session_signature = sig,
       nimble_version   = as.character(packageVersion("nimble"))
     ),
@@ -176,15 +202,159 @@ dpmirt_compile <- function(spec,
   .add_centered_sampler(conf, nimble_model, spec, use_centered_sampler,
                          verbose)
 
-  # --- WAIC grouping (by person) ---
+  # --- User sampler customization hook ---
+  conf <- .apply_sampler_config(
+    conf = conf,
+    nimble_model = nimble_model,
+    spec = spec,
+    sampler_config = sampler_config,
+    enable_logprob_monitor = enable_logprob_monitor
+  )
+
+  # --- WAIC contract ---
   if (enable_waic) {
-    # NIMBLE's WAIC uses conditional WAIC by default
-    # For IRT models, group by person
-    # This is automatically handled by NIMBLE when data are
-    # structured as y[j, i] with j = person index
+    # NIMBLE's WAIC uses conditional WAIC by default. DPMirt does not
+    # currently pass controlWAIC$dataGroups, so the prediction unit is
+    # NIMBLE's default data-node grouping rather than an explicit
+    # person-level grouping.
   }
 
   conf
+}
+
+
+#' Validate sampler_config public argument
+#' @noRd
+.validate_sampler_config_arg <- function(sampler_config) {
+  if (is.null(sampler_config)) {
+    return(NULL)
+  }
+
+  if (!is.function(sampler_config)) {
+    stop(
+      "sampler_config must be NULL or a function with signature ",
+      "function(conf, model, spec). List-based sampler_config objects are ",
+      "reserved but not implemented.",
+      call. = FALSE
+    )
+  }
+
+  sampler_config
+}
+
+
+#' Apply user sampler_config hook and validate required monitors
+#' @noRd
+.apply_sampler_config <- function(conf,
+                                  nimble_model,
+                                  spec,
+                                  sampler_config = NULL,
+                                  enable_logprob_monitor = TRUE) {
+  if (!is.null(sampler_config)) {
+    out <- tryCatch(
+      sampler_config(conf, nimble_model, spec),
+      error = function(e) {
+        stop(
+          "sampler_config failed while modifying the NIMBLE MCMC ",
+          "configuration: ", conditionMessage(e),
+          call. = FALSE
+        )
+      }
+    )
+
+    if (!is.null(out)) {
+      if (!inherits(out, "MCMCconf")) {
+        stop(
+          "sampler_config must return a NIMBLE MCMCconf object or NULL ",
+          "after mutating conf in place.",
+          call. = FALSE
+        )
+      }
+      conf <- out
+    }
+  }
+
+  .validate_required_mcmc_monitors(conf, spec, enable_logprob_monitor)
+  conf
+}
+
+
+#' Validate that DPMirt's required monitors survived sampler customization
+#' @noRd
+.validate_required_mcmc_monitors <- function(conf,
+                                             spec,
+                                             enable_logprob_monitor = TRUE) {
+  monitors <- tryCatch(
+    conf$getMonitors(),
+    error = function(e) {
+      stop("Unable to inspect MCMC monitors after sampler_config.",
+           call. = FALSE)
+    }
+  )
+  monitors2 <- tryCatch(
+    conf$getMonitors2(),
+    error = function(e) character(0)
+  )
+
+  required_primary <- spec$monitors
+  if (!isTRUE(enable_logprob_monitor)) {
+    required_primary <- setdiff(
+      required_primary,
+      c("myLogProbAll", "myLogProbSome", "myLogLik")
+    )
+  }
+  missing_primary <- required_primary[
+    !vapply(required_primary, .monitor_present, logical(1), actual = monitors)
+  ]
+
+  missing_secondary <- spec$monitors2[
+    !vapply(spec$monitors2, .monitor_present, logical(1), actual = monitors2)
+  ]
+
+  if (length(missing_primary) > 0L || length(missing_secondary) > 0L) {
+    missing <- c(missing_primary, paste0(missing_secondary, " (monitors2)"))
+    stop(
+      "sampler_config removed required DPMirt monitor(s): ",
+      paste(missing, collapse = ", "),
+      ". Required monitors are needed for rescaling, diagnostics, and ",
+      "posterior summaries.",
+      call. = FALSE
+    )
+  }
+
+  if (isTRUE(enable_logprob_monitor)) {
+    log_nodes <- c("myLogProbAll", "myLogProbSome", "myLogLik")
+    missing_log_samplers <- log_nodes[
+      !vapply(log_nodes, .sampler_present_on_node, logical(1), conf = conf)
+    ]
+
+    if (length(missing_log_samplers) > 0L) {
+      stop(
+        "sampler_config removed required log-probability sampler(s): ",
+        paste(missing_log_samplers, collapse = ", "),
+        call. = FALSE
+      )
+    }
+  }
+
+  invisible(TRUE)
+}
+
+
+#' Check whether a monitor name is present, allowing indexed expansions
+#' @noRd
+.monitor_present <- function(required, actual) {
+  any(actual == required | startsWith(actual, paste0(required, "[")))
+}
+
+
+#' Check whether a sampler is configured on a node when inspectable
+#' @noRd
+.sampler_present_on_node <- function(node, conf) {
+  if (is.function(conf$findSamplersOnNodes)) {
+    return(length(conf$findSamplersOnNodes(node)) > 0L)
+  }
+  TRUE
 }
 
 

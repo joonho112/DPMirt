@@ -6,42 +6,55 @@
 #
 # Workflow:
 #   1. If use_irtsimrel=TRUE and IRTsimrel is installed:
-#      eqc_calibrate() -> simulate_response_data() -> dpmirt_sim
+#      eqc_calibrate()/sac_calibrate() -> simulate_response_data() -> dpmirt_sim
 #   2. Otherwise: Paganin-style fallback (no reliability targeting)
 # ============================================================================
 
 #' Simulate IRT response data
 #'
 #' Generates binary response data under known IRT parameters.
-#' When IRTsimrel is available, uses EQC (Empirical Quadrature Calibration)
-#' to achieve a target marginal reliability. Otherwise falls back to
-#' Paganin-style simulation without reliability targeting.
+#' When IRTsimrel is available, uses IRTsimrel calibration to target a
+#' marginal reliability. The returned \code{reliability} field is the
+#' empirical KR-20 reliability of the generated response matrix; the
+#' calibration-level achieved marginal reliability is returned as
+#' \code{achieved_rho}. Otherwise falls back to Paganin-style simulation
+#' without reliability targeting.
 #'
 #' @param n_persons Integer. Number of persons.
 #' @param n_items Integer. Number of items.
-#' @param model Character. IRT model type: \code{"rasch"} or \code{"2pl"}.
+#' @param model Character. IRT model type: \code{"rasch"}, \code{"2pl"},
+#'   or \code{"3pl"}. IRTsimrel reliability targeting is available for Rasch
+#'   and 2PL; 3PL simulations use DPMirt's fallback generator.
 #' @param target_rho Numeric in (0, 1). Target marginal reliability. Only used
-#'   when IRTsimrel is available. Default 0.8.
+#'   when IRTsimrel is available and \code{model} is \code{"rasch"} or
+#'   \code{"2pl"}. Default 0.8.
 #' @param latent_shape Character. Shape of latent ability distribution.
 #'   When using IRTsimrel, supports all 12 shapes: \code{"normal"},
 #'   \code{"bimodal"}, \code{"trimodal"}, \code{"multimodal"},
 #'   \code{"skew_pos"}, \code{"skew_neg"}, \code{"heavy_tail"},
 #'   \code{"light_tail"}, \code{"uniform"}, \code{"floor"},
 #'   \code{"ceiling"}, \code{"custom"}.
+#'   For \code{"custom"}, supply
+#'   \code{latent_params = list(mixture_spec = list(weights = ..., means = ..., sds = ...))};
+#'   custom shapes require IRTsimrel with \code{model = "rasch"} or
+#'   \code{model = "2pl"}.
 #'   Fallback supports: \code{"normal"}, \code{"bimodal"}, \code{"skewed"}.
 #' @param item_source Character. Source for item parameters in IRTsimrel.
 #'   One of \code{"parametric"} (default), \code{"irw"},
 #'   \code{"hierarchical"}, \code{"custom"}.
-#' @param reliability_metric Character. Reliability metric for EQC calibration.
-#'   \code{"info"} (default, average-information, recommended) or
-#'   \code{"msem"} (MSEM-based).
+#' @param reliability_metric Character. Reliability metric for IRTsimrel
+#'   calibration. \code{"info"} (default, average-information, recommended)
+#'   uses EQC calibration; \code{"msem"} uses IRTsimrel's SAC calibration.
 #' @param latent_params List. Additional parameters passed to
 #'   \code{IRTsimrel::sim_latentG()} (e.g.,
-#'   \code{list(shape_params = list(delta = 0.8))}).
+#'   \code{list(shape_params = list(delta = 0.8))}). If
+#'   \code{latent_shape = "custom"}, this must include
+#'   \code{mixture_spec}.
 #' @param item_params List. Additional parameters passed to
 #'   \code{IRTsimrel::sim_item_params()} (e.g.,
 #'   \code{list(discrimination_params = list(rho = -0.3))}).
-#' @param M Integer. Quadrature sample size for EQC. Default 10000.
+#' @param M Integer. Quadrature sample size for EQC, and pre-calibration
+#'   quadrature size for SAC. Default 10000.
 #' @param seed Integer or NULL. Random seed for reproducibility.
 #' @param use_irtsimrel Logical. If TRUE (default), attempt to use
 #'   IRTsimrel for reliability-targeted simulation. Falls back to internal
@@ -54,12 +67,17 @@
 #'   \item{response}{N x I binary response matrix}
 #'   \item{theta}{True person abilities (length N)}
 #'   \item{beta}{True item difficulties (length I)}
-#'   \item{lambda}{True discriminations (length I for 2PL, NULL for Rasch)}
+#'   \item{lambda}{True discriminations (length I for 2PL/3PL, NULL for Rasch)}
+#'   \item{delta}{True guessing parameters (length I for 3PL, NULL otherwise)}
 #'   \item{n_persons, n_items, model}{Simulation settings}
-#'   \item{reliability}{Achieved marginal reliability}
+#'   \item{reliability}{Empirical KR-20 reliability of the response matrix}
+#'   \item{achieved_rho}{IRTsimrel calibration achieved marginal reliability
+#'     (NULL if fallback)}
 #'   \item{target_rho}{Requested target reliability (NULL if fallback)}
 #'   \item{latent_shape}{Distribution shape used}
-#'   \item{eqc_result}{EQC calibration result (NULL if fallback)}
+#'   \item{eqc_result}{IRTsimrel calibration result (NULL if fallback).
+#'     The field name is retained for backward compatibility; the object class
+#'     distinguishes EQC and SAC results.}
 #'   \item{method}{Character: "irtsimrel" or "fallback"}
 #' }
 #'
@@ -112,9 +130,18 @@ dpmirt_simulate <- function(n_persons,
   stopifnot(is.numeric(target_rho), length(target_rho) == 1,
             target_rho > 0, target_rho < 1)
 
+  has_irtsimrel <- requireNamespace("IRTsimrel", quietly = TRUE)
+  .validate_custom_latent_shape(
+    latent_shape = latent_shape,
+    latent_params = latent_params,
+    model = model,
+    use_irtsimrel = use_irtsimrel,
+    has_irtsimrel = has_irtsimrel
+  )
+
   # --- Try IRTsimrel integration (Rasch/2PL only; 3PL uses fallback) ---
   if (model != "3pl" &&
-      use_irtsimrel && requireNamespace("IRTsimrel", quietly = TRUE)) {
+      use_irtsimrel && has_irtsimrel) {
     result <- .simulate_irtsimrel(
       n_persons          = n_persons,
       n_items            = n_items,
@@ -134,8 +161,7 @@ dpmirt_simulate <- function(n_persons,
     # --- Fallback: Paganin-style simulation ---
     if (model == "3pl" && use_irtsimrel) {
       message("IRTsimrel does not support 3PL. Using fallback simulation.")
-    } else if (use_irtsimrel &&
-               !requireNamespace("IRTsimrel", quietly = TRUE)) {
+    } else if (use_irtsimrel && !has_irtsimrel) {
       message("IRTsimrel not installed. Using fallback simulation. ",
               "Install with: remotes::install_github('joonho112/IRTsimrel')")
     }
@@ -155,6 +181,7 @@ dpmirt_simulate <- function(n_persons,
       n_items      = n_items,
       model        = model,
       reliability  = result$reliability,
+      achieved_rho = result$achieved_rho,
       target_rho   = if (sim_method == "irtsimrel") target_rho else NULL,
       latent_shape = latent_shape,
       eqc_result   = result$eqc_result,
@@ -171,10 +198,10 @@ dpmirt_simulate <- function(n_persons,
 # IRTsimrel Integration
 # ============================================================================
 
-#' Simulate data using IRTsimrel (EQC calibration)
+#' Simulate data using IRTsimrel calibration
 #'
 #' Internal function that orchestrates the IRTsimrel workflow:
-#' eqc_calibrate() -> simulate_response_data()
+#' eqc_calibrate()/sac_calibrate() -> simulate_response_data()
 #'
 #' @noRd
 .simulate_irtsimrel <- function(n_persons,
@@ -195,10 +222,15 @@ dpmirt_simulate <- function(n_persons,
   # --- Map DPMirt shape names to IRTsimrel ---
   irtsimrel_shape <- .map_latent_shape(latent_shape)
 
-  # --- Step 1: EQC Calibration ---
-  if (verbose) message("  Running EQC calibration (target rho = ", target_rho, ")...")
+  calibration_method <- if (reliability_metric == "msem") "SAC" else "EQC"
 
-  eqc_args <- list(
+  # --- Step 1: IRTsimrel Calibration ---
+  if (verbose) {
+    message("  Running ", calibration_method,
+            " calibration (target rho = ", target_rho, ")...")
+  }
+
+  calib_args <- list(
     target_rho         = target_rho,
     n_items            = n_items,
     model              = model,
@@ -212,24 +244,31 @@ dpmirt_simulate <- function(n_persons,
 
   # Pass through latent_params and item_params
   if (length(latent_params) > 0) {
-    eqc_args$latent_params <- latent_params
+    calib_args$latent_params <- latent_params
   }
   if (length(item_params) > 0) {
-    eqc_args$item_params <- item_params
+    calib_args$item_params <- item_params
   }
 
-  eqc_result <- do.call(IRTsimrel::eqc_calibrate, eqc_args)
+  if (reliability_metric == "msem") {
+    calib_args$M_pre <- calib_args$M
+    calib_args$M <- NULL
+    calib_result <- do.call(IRTsimrel::sac_calibrate, calib_args)
+  } else {
+    calib_result <- do.call(IRTsimrel::eqc_calibrate, calib_args)
+  }
 
   if (verbose) {
-    message("  EQC result: c* = ", round(eqc_result$c_star, 4),
-            ", achieved rho = ", round(eqc_result$achieved_rho, 4))
+    message("  ", calibration_method, " result: c* = ",
+            round(calib_result$c_star, 4),
+            ", achieved rho = ", round(calib_result$achieved_rho, 4))
   }
 
   # --- Step 2: Generate response data ---
   if (verbose) message("  Generating response data (N = ", n_persons, ")...")
 
   sim_args <- list(
-    result        = eqc_result,
+    result        = calib_result,
     n_persons     = n_persons,
     latent_shape  = irtsimrel_shape,
     seed          = if (!is.null(seed)) seed + 1000L else NULL
@@ -261,8 +300,22 @@ dpmirt_simulate <- function(n_persons,
     lambda      = lambda_out,
     delta       = NULL,   # IRTsimrel does not support 3PL
     reliability = reliability,
-    eqc_result  = eqc_result
+    achieved_rho = .calibration_achieved_rho(calib_result),
+    eqc_result  = calib_result
   )
+}
+
+
+#' Label an IRTsimrel calibration result
+#' @noRd
+.calibration_label <- function(result) {
+  if (inherits(result, "sac_result")) {
+    "SAC"
+  } else if (inherits(result, "eqc_result")) {
+    "EQC"
+  } else {
+    "Calibration"
+  }
 }
 
 
@@ -297,6 +350,102 @@ dpmirt_simulate <- function(n_persons,
 }
 
 
+#' Validate DPMirt's public contract for custom latent shapes
+#' @noRd
+.validate_custom_latent_shape <- function(latent_shape,
+                                          latent_params,
+                                          model,
+                                          use_irtsimrel,
+                                          has_irtsimrel) {
+  if (!identical(latent_shape, "custom")) {
+    return(invisible(TRUE))
+  }
+
+  mixture_spec <- if (is.list(latent_params)) latent_params$mixture_spec else NULL
+  .validate_custom_mixture_spec(mixture_spec)
+
+  if (identical(model, "3pl") || !isTRUE(use_irtsimrel) || !has_irtsimrel) {
+    stop(
+      "latent_shape = \"custom\" requires IRTsimrel Rasch/2PL simulation. ",
+      "Use model = \"rasch\" or \"2pl\", use_irtsimrel = TRUE, and ensure ",
+      "IRTsimrel is installed.",
+      call. = FALSE
+    )
+  }
+
+  invisible(TRUE)
+}
+
+
+#' Validate IRTsimrel custom mixture specification
+#' @noRd
+.validate_custom_mixture_spec <- function(mixture_spec) {
+  if (is.null(mixture_spec) || !is.list(mixture_spec)) {
+    stop(
+      "latent_shape = \"custom\" requires ",
+      "latent_params = list(mixture_spec = ...).",
+      call. = FALSE
+    )
+  }
+
+  required_fields <- c("weights", "means", "sds")
+  if (!all(required_fields %in% names(mixture_spec))) {
+    stop(
+      "mixture_spec must contain numeric fields: weights, means, and sds.",
+      call. = FALSE
+    )
+  }
+
+  weights <- mixture_spec$weights
+  means <- mixture_spec$means
+  sds <- mixture_spec$sds
+
+  if (!is.numeric(weights) || length(weights) == 0L ||
+      anyNA(weights) || any(!is.finite(weights)) || any(weights < 0)) {
+    stop(
+      "mixture_spec$weights must be a finite non-negative numeric vector.",
+      call. = FALSE
+    )
+  }
+  if (abs(sum(weights) - 1) > 1e-10) {
+    stop("mixture_spec$weights must sum to 1.", call. = FALSE)
+  }
+
+  k <- length(weights)
+  if (!is.numeric(means) || length(means) != k ||
+      anyNA(means) || any(!is.finite(means))) {
+    stop(
+      "mixture_spec$means must be a finite numeric vector matching weights.",
+      call. = FALSE
+    )
+  }
+  if (!is.numeric(sds) || length(sds) != k ||
+      anyNA(sds) || any(!is.finite(sds)) || any(sds <= 0)) {
+    stop(
+      "mixture_spec$sds must be a positive finite numeric vector matching weights.",
+      call. = FALSE
+    )
+  }
+
+  invisible(TRUE)
+}
+
+
+#' Extract achieved marginal reliability from a calibration result
+#' @noRd
+.calibration_achieved_rho <- function(result) {
+  rho <- result$achieved_rho
+  if (is.null(rho) || length(rho) == 0L) {
+    return(NULL)
+  }
+  rho <- suppressWarnings(as.numeric(rho[[1]]))
+  if (!is.finite(rho)) {
+    return(NULL)
+  }
+  rho
+}
+
+
 # ============================================================================
 # Fallback Simulation (Paganin-style, no reliability targeting)
 # ============================================================================
@@ -310,6 +459,15 @@ dpmirt_simulate <- function(n_persons,
 #'
 #' @noRd
 .simulate_fallback <- function(n_persons, n_items, model, latent_shape) {
+  valid_fallback_shapes <- c("normal", "bimodal", "skewed")
+  if (!(latent_shape %in% valid_fallback_shapes)) {
+    stop(
+      "Fallback simulation supports latent_shape values: ",
+      paste(valid_fallback_shapes, collapse = ", "),
+      ". Use IRTsimrel for additional latent shapes.",
+      call. = FALSE
+    )
+  }
 
   # --- Generate latent abilities ---
   theta <- switch(latent_shape,
@@ -324,8 +482,7 @@ dpmirt_simulate <- function(n_persons,
     "skewed"  = {
       # Right-skewed: shifted exponential
       rexp(n_persons, rate = 1) - 1
-    },
-    rnorm(n_persons, 0, 1)
+    }
   )
 
   # --- Generate item parameters ---
@@ -347,7 +504,8 @@ dpmirt_simulate <- function(n_persons,
   reliability <- .compute_kr20(y)
 
   list(y = y, theta = theta, beta = beta, lambda = lambda,
-       delta = delta, reliability = reliability, eqc_result = NULL)
+       delta = delta, reliability = reliability, achieved_rho = NULL,
+       eqc_result = NULL)
 }
 
 
@@ -426,8 +584,16 @@ print.dpmirt_sim <- function(x, ...) {
   cat("KR-20:        ", round(x$reliability, 3), "\n")
 
   if (!is.null(x$eqc_result)) {
-    cat("EQC c*:       ", round(x$eqc_result$c_star, 4), "\n")
-    cat("EQC rho:      ", round(x$eqc_result$achieved_rho, 4), "\n")
+    label <- .calibration_label(x$eqc_result)
+    achieved_rho <- if (!is.null(x$achieved_rho)) {
+      x$achieved_rho
+    } else {
+      .calibration_achieved_rho(x$eqc_result)
+    }
+    cat(label, " c*:       ", round(x$eqc_result$c_star, 4), "\n", sep = "")
+    if (!is.null(achieved_rho)) {
+      cat(label, " rho:      ", round(achieved_rho, 4), "\n", sep = "")
+    }
   }
 
   invisible(x)

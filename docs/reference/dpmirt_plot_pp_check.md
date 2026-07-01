@@ -1,8 +1,10 @@
 # Plot Posterior Predictive Check
 
-Compares observed item statistics (proportion correct) with the
-posterior predictive distribution. Points falling outside the predictive
-intervals may indicate model misfit. Requires ggplot2.
+Compares posterior predictive replicated statistics with fitted expected
+proportions or scores computed from posterior mean parameters. DPMirt
+does not currently store the original response matrix in `dpmirt_fit`,
+so this is a fitted-proportion check rather than a direct observed-data
+PPC. Requires ggplot2.
 
 ## Usage
 

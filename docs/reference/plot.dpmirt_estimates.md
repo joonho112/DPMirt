@@ -28,6 +28,10 @@ plot(x, type = c("estimates", "shrinkage"), param = c("theta", "beta"), ...)
 
   Additional graphical parameters.
 
+## Value
+
+Invisibly returns the input `dpmirt_estimates` object.
+
 ## See also
 
 [`dpmirt_estimates`](https://joonho112.github.io/DPMirt/reference/dpmirt_estimates.md),

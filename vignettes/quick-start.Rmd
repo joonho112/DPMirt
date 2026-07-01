@@ -43,7 +43,7 @@ find_extdata <- function(filename) {
   ""
 }
 
-# Guard: pre-computed MCMC results must exist for eval'd chunks
+# Guard: compact pre-computed fixtures must exist for eval'd chunks
 has_data <- nzchar(find_extdata("vignette_fit_rasch_normal.rds")) &&
   nzchar(find_extdata("vignette_fit_rasch_dpm.rds"))
 ```
@@ -62,15 +62,18 @@ By the end you will know how to:
    Bayes (CB), and triple-goal (GR) estimators.
 
 No NIMBLE compilation is required for the simulation or estimation steps
-shown here --- we load pre-computed MCMC results so you can follow along
-instantly.
+shown here --- we load compact pre-computed fixtures with thinned posterior
+draws so you can follow along instantly.
 
 ## Simulate Data
 
 `dpmirt_simulate()` generates binary response data under a known IRT model.
-When the optional **IRTsimrel** package is installed, it uses Empirical
-Quadrature Calibration (EQC) to hit a target marginal reliability; otherwise
-it falls back to a Paganin-style simulation.
+When the optional **IRTsimrel** package is installed, it uses IRTsimrel
+calibration (EQC by default, SAC for MSEM targets) to hit a target marginal
+reliability for Rasch and 2PL simulations; otherwise it falls back to a
+Paganin-style simulation.
+3PL simulation is also available, but currently uses DPMirt's fallback
+generator and does not target `target_rho`.
 
 ```{r simulate}
 sim <- dpmirt_simulate(
@@ -88,13 +91,17 @@ str(sim, max.level = 1)
 The returned `dpmirt_sim` object contains the binary response matrix
 (`sim$response`), the true person abilities (`sim$theta`), and the true item
 difficulties (`sim$beta`).
+`sim$reliability` is the empirical KR-20 reliability of the generated
+response matrix. When IRTsimrel is used, `sim$achieved_rho` records the
+calibration-level achieved marginal reliability; it is `NULL` for fallback
+simulations.
 You can inspect the simulation with `print()`:
 
 ```{r print-sim}
 sim
 ```
 
-Because `dpmirt_simulate()` is pure R, it runs instantly --- no NIMBLE
+Because `dpmirt_simulate()` does not fit a model, it runs quickly --- no NIMBLE
 compilation needed.
 
 ## Fit a Rasch Model with a Normal Prior
@@ -102,7 +109,8 @@ compilation needed.
 The main entry point is `dpmirt()`.
 Below is the call you would run in an interactive session.
 NIMBLE compiles the model on first use, which takes roughly 1--2 minutes;
-after that, additional sampling is fast.
+after that, additional sampling is fast while the compiled object is live in
+the current R session.
 
 ```r
 # This is the code you would run (takes ~2 minutes for compilation):
@@ -112,20 +120,26 @@ fit <- dpmirt(
   prior   = "normal",
   niter   = 10000,
   nburnin = 2000,
+  thin    = 32,
+  thin2   = 32,
   seed    = 100
 )
 ```
 
-For this vignette we load a pre-computed result instead:
+For this vignette we load a compact pre-computed result instead:
 
 ```{r load-fit-normal, eval = has_data}
 fit <- readRDS(find_extdata("vignette_fit_rasch_normal.rds"))
 ```
 
+Compact RDS fixtures retain thinned posterior draws suitable for summaries
+and plots, but they cannot be resumed because compiled NIMBLE pointers are
+only valid in the R session that created them.
+
 ## Understanding the Output
 
-A `dpmirt_fit` object stores posterior samples, diagnostics, and model
-configuration.
+A `dpmirt_fit` object stores posterior samples, chain/run metadata,
+diagnostics, and model configuration.
 The `print()` method gives a compact overview:
 
 ```{r print-fit, eval = has_data}
@@ -138,7 +152,7 @@ Key fields:
 - **MCMC** --- iteration count, burn-in, and thinning.
 - **WAIC** --- Watanabe--Akaike information criterion for model comparison.
 - **Min ESS** --- minimum effective sample size across items and persons; a
-  quick convergence check.
+  useful first-pass diagnostic to review alongside trace and rank plots.
 - **Total time** --- wall-clock time for the full pipeline.
 
 For a richer view, call `summary()`:
@@ -151,11 +165,32 @@ The summary adds item-by-item parameter estimates (posterior mean and SD),
 a distributional summary of person abilities, and --- for DPM models ---
 cluster and concentration-parameter diagnostics.
 
+Formal diagnostics are available with `dpmirt_diagnostics()`:
+
+```{r diagnostics-fit, eval = has_data}
+diag <- dpmirt_diagnostics(fit)
+diag$chain_info
+
+rhat <- diag[["rhat"]]
+if (is.null(rhat)) {
+  "R-hat unavailable for this single-chain fixture"
+} else {
+  rhat
+}
+```
+
+Single-chain fits, including the pre-computed fixtures used in this vignette,
+return `NULL` R-hat. Use ESS, trace plots, and substantive posterior checks as
+first-pass diagnostics; R-hat appears when at least two labeled chains have
+retained draws.
+
 ## Visualizations
 
 `plot(fit, type = ...)` dispatches to 12 plot types.
 If **ggplot2** is installed the package uses it automatically; otherwise
-base R graphics are produced.
+base R graphics are produced. The same views are also available through
+standalone helpers such as `dpmirt_plot_density()` and
+`dpmirt_plot_trace()`.
 
 ### Posterior Density of Theta
 
@@ -165,7 +200,8 @@ plot(fit, type = "density")
 
 This shows the kernel density of the $N = 200$ posterior-mean person
 abilities.
-Under a Normal prior the density is smooth and unimodal by construction.
+In this normal-population example, the estimated density is expected to be
+smooth and roughly unimodal.
 
 ### Item Difficulty Estimates
 
@@ -179,13 +215,14 @@ Items are ordered from easiest (most negative) to hardest.
 
 ### MCMC Trace
 
-```{r plot-trace, eval = has_data, fig.cap = "Log-likelihood trace plot. A stationary trace suggests convergence."}
+```{r plot-trace, eval = has_data, fig.cap = "Log-likelihood trace plot. A stationary trace is a first-pass visual mixing check."}
 plot(fit, type = "trace")
 ```
 
 A stationary log-likelihood trace with no visible trend or drift is a
-first-pass convergence check.
-For formal diagnostics see the **Models and Workflow** vignette.
+first-pass visual mixing check.
+For formal diagnostics see the
+[Models and Workflow](models-and-workflow.html) vignette.
 
 ## Adding DPM Flexibility
 
@@ -202,11 +239,13 @@ fit_dpm <- dpmirt(
   prior   = "dpm",
   niter   = 10000,
   nburnin = 2000,
-  seed    = 200
+  thin    = 32,
+  thin2   = 32,
+  seed    = 101
 )
 ```
 
-Again, we load a pre-computed result:
+Again, we load a compact pre-computed result:
 
 ```{r load-fit-dpm, eval = has_data}
 fit_dpm <- readRDS(find_extdata("vignette_fit_rasch_dpm.rds"))
@@ -250,15 +289,13 @@ if (requireNamespace("ggplot2", quietly = TRUE)) {
 
 ### Cluster Diagnostics
 
-```{r plot-clusters, eval = has_data, fig.height = 4, fig.cap = "Number of active clusters across MCMC iterations (left) and its posterior distribution (right)."}
+```{r plot-clusters, eval = has_data, fig.height = 4, fig.cap = "Cluster-count trace across MCMC iterations. Dashed line: posterior mean cluster count."}
 plot(fit_dpm, type = "clusters")
 ```
 
-The left panel traces the number of active clusters at each post-burn-in
-iteration; the right panel shows the posterior distribution of cluster
-counts.
-A single dominant mode suggests the data are well-described by that many
-latent subgroups.
+`plot(fit_dpm, type = "clusters")` shows how the number of active clusters
+moves across retained draws. Stable oscillation without a persistent trend is
+a first-pass mixing check; it is not a standalone convergence diagnostic.
 
 ### DP Mixture Density
 
@@ -268,15 +305,20 @@ plot(fit_dpm, type = "dp_density")
 
 The solid curve is the posterior mean of the DP mixture density evaluated
 on a fine grid; the shaded ribbon is a 95% pointwise credible band.
-The dashed line shows the standard Normal for reference.
+The dashed line shows the standard Normal for reference. Computing this
+density from scratch reconstructs posterior DP-measure samples and can be
+expensive. The compact vignette fixture stores a plot-ready `dp_density`
+summary only; call `dpmirt_dp_density()` on a live/full DPM fit, not on these
+compact fixtures, if you need to recompute the DP measure.
 
 ## Seeing the DPM Advantage
 
 The example above used a truly Normal population, so both priors performed
 equally well.  But what happens when the population departs from normality?
-The DPMirt package ships with pre-computed results for a **bimodal**
-population --- a 50/50 mixture of two groups centered at $\theta = -1.5$
-and $\theta = 1.5$ --- that reveals the DPM prior's key advantage.
+The DPMirt package ships with compact pre-computed results for a
+**bimodal** population --- a 50/50 mixture of two groups centered at
+$\theta = -1.5$ and $\theta = 1.5$ --- that reveals the DPM prior's key
+advantage.
 
 ```{r bimodal-guard, include = FALSE}
 has_bimodal_data <- nzchar(find_extdata("vignette_sim_bimodal.rds")) &&
@@ -322,8 +364,9 @@ if (requireNamespace("ggplot2", quietly = TRUE)) {
 > adapts its shape to the data, preserving the bimodal structure.  This
 > difference is most consequential for classification decisions (e.g.,
 > identifying students for intervention) and for reporting on the shape of
-> the population distribution.  See `vignette("posterior-summaries")` for
-> a detailed comparison of estimators that exploit this flexibility.
+> the population distribution.  See the
+> [posterior summary vignette](posterior-summaries.html) for a detailed
+> comparison of estimators that exploit this flexibility.
 
 ## Extracting Estimates
 
@@ -353,13 +396,27 @@ head(est$theta, 10)
 > distribution (e.g., for group-level reporting), use **CB**.
 > If you need both accurate rankings *and* distributional fidelity, use
 > **GR**.
-> See the **Posterior Summaries** vignette for an in-depth comparison.
+> See the [Posterior Summaries](posterior-summaries.html) vignette for an
+> in-depth comparison.
 
 Item estimates are available in `est$beta`:
 
 ```{r item-estimates, eval = has_data}
 head(est$beta, 10)
 ```
+
+If you need posterior draws for custom summaries or graphics, use
+`dpmirt_draws()`:
+
+```{r theta-draws, eval = has_data}
+theta_draws <- dpmirt_draws(fit_dpm, vars = "theta")
+dim(theta_draws)
+theta_draws[1:5, 1:4]
+```
+
+`dpmirt_draws()` currently returns retained rescaled draws. Raw, unrescaled
+draw extraction and disk-backed draw storage are reserved for a future
+release.
 
 ## What's Next?
 
@@ -368,9 +425,9 @@ Depending on your goal, the following vignettes go deeper:
 
 | Step | What to read | Why |
 |:-----|:-------------|:----|
-| Understand models | *Models and Workflow* | Step-by-step control over specification, compilation, and sampling; 2PL and 3PL models |
-| Choose an estimator | *Posterior Summaries* | When PM vs CB vs GR; shrinkage diagnostics and loss evaluation |
-| Set DPM priors | *Prior Elicitation* | Principled choice of the concentration parameter $\alpha$ via **DPprior** |
+| Understand models | [Models and Workflow](models-and-workflow.html) | Step-by-step control over specification, live compiled objects, sampling, diagnostics, 3PL delta, and identification limits |
+| Choose an estimator | [Posterior Summaries](posterior-summaries.html) | When PM vs CB vs GR; shrinkage diagnostics and loss evaluation |
+| Set DPM priors | [Prior Elicitation](prior-elicitation.html) | Optional DPprior calibration of $\alpha$; Gamma(1, 3) fallback |
 
 ---
 

@@ -1,8 +1,7 @@
 # Plot Posterior Density vs Reference Distribution
 
-Overlays the estimated posterior mean density with a reference
-distribution (e.g., true generating density or N(0,1)). Useful for
-assessing how well the model recovers the latent trait distribution.
+Overlays the estimated posterior mean density with the N(0,1) reference
+distribution and, when available, the fitted DP mixture density.
 Requires ggplot2.
 
 ## Usage
@@ -20,8 +19,8 @@ dpmirt_plot_density_compare(fit, reference = c("normal"), ...)
 
 - reference:
 
-  Character or numeric vector. If `"normal"` (default), overlays N(0,1).
-  If numeric, treated as reference theta values.
+  Character. Currently only `"normal"` is supported, which overlays
+  N(0,1).
 
 - ...:
 
@@ -63,7 +62,5 @@ fit <- dpmirt(sim$response, model = "rasch", prior = "normal",
 # Compare to N(0,1)
 dpmirt_plot_density_compare(fit)
 
-# Compare to true theta
-dpmirt_plot_density_compare(fit, reference = sim$theta)
 } # }
 ```

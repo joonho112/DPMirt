@@ -114,7 +114,9 @@ dpmirt(
 
 - item_priors:
 
-  List of custom item priors.
+  Reserved. Custom item-prior schemas are not currently implemented. Use
+  `NULL` or [`list()`](https://rdrr.io/r/base/list.html) to use DPMirt's
+  fixed item priors.
 
 - rescale:
 
@@ -130,15 +132,19 @@ dpmirt(
 
 - save_draws:
 
-  Logical. Save full theta posterior. Default TRUE.
+  Reserved. DPMirt currently always retains posterior draw matrices in
+  the returned `dpmirt_fit` object. Only `TRUE` is supported.
 
 - save_path:
 
-  Character or NULL. Path for disk-backed storage.
+  Reserved. Disk-backed draw storage is not currently implemented. Only
+  `NULL` is supported.
 
 - sampler_config:
 
-  Optional custom sampler configuration.
+  Optional advanced hook for NIMBLE sampler customization. Must be
+  `NULL` or a function with signature `function(conf, model, spec)`.
+  List-based sampler configuration is reserved but not implemented.
 
 - verbose:
 
@@ -151,6 +157,18 @@ dpmirt(
 ## Value
 
 A `dpmirt_fit` S3 object.
+
+## Details
+
+A `dpmirt_fit` is currently an in-memory, draw-retaining object. The
+stored posterior draws are required by
+[`dpmirt_estimates()`](https://joonho112.github.io/DPMirt/reference/dpmirt_estimates.md),
+[`dpmirt_draws()`](https://joonho112.github.io/DPMirt/reference/dpmirt_draws.md),
+[`summary()`](https://rdrr.io/r/base/summary.html),
+[`coef()`](https://rdrr.io/r/stats/coef.html), diagnostics, and plotting
+helpers. The object also preserves chain/run provenance through
+`schema_version`, `chain_info`, `draw_index`, and `run_history`.
+Disk-backed draw storage is reserved for a future release.
 
 ## References
 

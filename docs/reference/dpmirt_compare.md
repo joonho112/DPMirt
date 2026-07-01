@@ -16,11 +16,21 @@ dpmirt_compare(..., criterion = "waic")
 
 - criterion:
 
-  Character. Comparison criterion. Default "waic".
+  Character. Comparison criterion. Currently only `"waic"` is supported.
 
 ## Value
 
-A data.frame ranking models by the criterion.
+A data.frame ranking models by the criterion with columns `model`,
+`waic`, `delta_waic`, and `waic_aggregation`. Fits with unavailable WAIC
+are kept in the table with `NA` deltas; all-missing WAIC values raise an
+error.
+
+## Details
+
+For chain-labeled multi-run fits, `waic_aggregation` records whether the
+top-level WAIC is a mean of per-run WAIC values. Such values are
+retained for provenance and backward compatibility but should not be
+interpreted as pooled posterior WAIC.
 
 ## See also
 

@@ -30,13 +30,18 @@ print(x, ...)
 
 - sampler_config:
 
-  Optional custom MCMC sampler configuration.
+  Optional advanced hook for NIMBLE sampler customization. Must be
+  `NULL` or a function with signature `function(conf, model, spec)`. The
+  function receives the configured NIMBLE `MCMCconf`, the uncompiled
+  NIMBLE model, and the DPMirt spec, and should return the modified
+  `MCMCconf` or `NULL` after mutating `conf` in place. List-based
+  sampler configuration is reserved but not implemented.
 
 - use_centered_sampler:
 
   Character or logical. Whether to use the centered sampler for SI
-  parameterization. "auto" enables it when appropriate (SI param +
-  2PL/3PL). Only relevant for Phase 3+.
+  parameterization. "auto" enables it when appropriate (SI
+  parameterization with 2PL/3PL models).
 
 - enable_waic:
 

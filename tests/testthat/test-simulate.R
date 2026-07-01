@@ -25,6 +25,7 @@ test_that("dpmirt_simulate creates valid Rasch data (fallback)", {
   expect_true(sim$reliability > 0 && sim$reliability < 1)
   expect_equal(sim$method, "fallback")
   expect_null(sim$target_rho)
+  expect_null(sim$achieved_rho)
   expect_null(sim$eqc_result)
 })
 
@@ -39,6 +40,56 @@ test_that("dpmirt_simulate creates valid 2PL data (fallback)", {
   expect_true(all(sim$lambda > 0))
   expect_equal(sim$model, "2pl")
   expect_equal(sim$method, "fallback")
+  expect_null(sim$achieved_rho)
+})
+
+
+test_that("dpmirt_simulate creates valid 3PL data (fallback)", {
+  sim <- dpmirt_simulate(n_persons = 80, n_items = 12,
+                         model = "3pl", seed = 42,
+                         use_irtsimrel = FALSE)
+
+  expect_s3_class(sim, "dpmirt_sim")
+  expect_equal(dim(sim$response), c(80, 12))
+  expect_true(all(sim$response %in% c(0, 1)))
+  expect_equal(length(sim$lambda), 12)
+  expect_equal(length(sim$delta), 12)
+  expect_true(all(sim$lambda > 0))
+  expect_true(all(sim$delta > 0 & sim$delta < 1))
+  expect_equal(sim$model, "3pl")
+  expect_equal(sim$method, "fallback")
+  expect_null(sim$target_rho)
+  expect_null(sim$achieved_rho)
+  expect_null(sim$eqc_result)
+  expect_true(is.finite(sim$reliability))
+})
+
+
+test_that("dpmirt_simulate 3PL fallback is reproducible with seed", {
+  sim1 <- dpmirt_simulate(40, 6, model = "3pl", seed = 123,
+                          use_irtsimrel = FALSE)
+  sim2 <- dpmirt_simulate(40, 6, model = "3pl", seed = 123,
+                          use_irtsimrel = FALSE)
+
+  expect_identical(sim1$response, sim2$response)
+  expect_identical(sim1$theta, sim2$theta)
+  expect_identical(sim1$lambda, sim2$lambda)
+  expect_identical(sim1$delta, sim2$delta)
+})
+
+
+test_that("fallback simulation ignores target_rho by design", {
+  sim_low <- dpmirt_simulate(50, 10, model = "rasch", target_rho = 0.2,
+                             seed = 123, use_irtsimrel = FALSE)
+  sim_high <- dpmirt_simulate(50, 10, model = "rasch", target_rho = 0.9,
+                              seed = 123, use_irtsimrel = FALSE)
+
+  expect_null(sim_low$target_rho)
+  expect_null(sim_high$target_rho)
+  expect_null(sim_low$achieved_rho)
+  expect_null(sim_high$achieved_rho)
+  expect_identical(sim_low$response, sim_high$response)
+  expect_identical(sim_low$theta, sim_high$theta)
 })
 
 
@@ -143,6 +194,75 @@ test_that("dpmirt_simulate validates model argument", {
 })
 
 
+test_that("dpmirt_simulate validates custom latent shape contract", {
+  valid_mixture <- list(
+    weights = c(0.5, 0.5),
+    means = c(-1, 1),
+    sds = c(0.5, 0.5)
+  )
+
+  expect_error(
+    dpmirt_simulate(50, 10, model = "rasch", latent_shape = "custom"),
+    "mixture_spec"
+  )
+  expect_error(
+    dpmirt_simulate(
+      50, 10, model = "rasch", latent_shape = "custom",
+      latent_params = list(mixture_spec = list(weights = c(0.5, 0.5)))
+    ),
+    "means"
+  )
+  expect_error(
+    dpmirt_simulate(
+      50, 10, model = "rasch", latent_shape = "custom",
+      latent_params = list(mixture_spec = list(
+        weights = c(0.7, 0.7),
+        means = c(-1, 1),
+        sds = c(0.5, 0.5)
+      ))
+    ),
+    "sum to 1"
+  )
+  expect_error(
+    dpmirt_simulate(
+      50, 10, model = "rasch", latent_shape = "custom",
+      latent_params = list(mixture_spec = list(
+        weights = c(0.5, 0.5),
+        means = c(-1, 1),
+        sds = c(0.5, -0.5)
+      ))
+    ),
+    "positive"
+  )
+
+  expect_error(
+    dpmirt_simulate(
+      50, 10, model = "rasch", latent_shape = "custom",
+      latent_params = list(mixture_spec = valid_mixture),
+      use_irtsimrel = FALSE
+    ),
+    "requires IRTsimrel"
+  )
+  expect_error(
+    dpmirt_simulate(
+      50, 10, model = "3pl", latent_shape = "custom",
+      latent_params = list(mixture_spec = valid_mixture)
+    ),
+    "Rasch/2PL"
+  )
+  expect_error(
+    DPMirt:::.validate_custom_latent_shape(
+      latent_shape = "custom",
+      latent_params = list(mixture_spec = valid_mixture),
+      model = "rasch",
+      use_irtsimrel = TRUE,
+      has_irtsimrel = FALSE
+    ),
+    "requires IRTsimrel"
+  )
+})
+
+
 # ============================================================================
 # C. Internal helper tests
 # ============================================================================
@@ -165,6 +285,14 @@ test_that(".map_latent_shape rejects invalid shapes", {
   expect_error(
     DPMirt:::.map_latent_shape("banana"),
     "Unknown latent_shape"
+  )
+})
+
+
+test_that(".simulate_fallback rejects unsupported latent shapes", {
+  expect_error(
+    DPMirt:::.simulate_fallback(20, 5, "rasch", "trimodal"),
+    "Fallback simulation supports"
   )
 })
 
@@ -192,6 +320,33 @@ test_that(".generate_responses works for 2PL", {
 
   expect_equal(dim(y), c(20, 5))
   expect_true(all(y %in% c(0, 1)))
+})
+
+
+test_that(".generate_responses applies 3PL guessing lower asymptote", {
+  n_persons <- 2000
+  delta <- 0.25
+
+  set.seed(42)
+  low_theta <- DPMirt:::.generate_responses(
+    theta = rep(-100, n_persons),
+    beta = 0,
+    lambda = 1,
+    model = "3pl",
+    delta = delta
+  )
+
+  set.seed(42)
+  high_theta <- DPMirt:::.generate_responses(
+    theta = rep(100, n_persons),
+    beta = 0,
+    lambda = 1,
+    model = "3pl",
+    delta = delta
+  )
+
+  expect_equal(mean(low_theta), delta, tolerance = 0.03)
+  expect_gt(mean(high_theta), 0.98)
 })
 
 
@@ -225,8 +380,9 @@ test_that("dpmirt_sim contains all expected fields", {
                          use_irtsimrel = FALSE)
 
   expected_names <- c("response", "theta", "beta", "lambda",
-                      "n_persons", "n_items", "model", "reliability",
-                      "target_rho", "latent_shape", "eqc_result", "method")
+                      "delta", "n_persons", "n_items", "model",
+                      "reliability", "achieved_rho", "target_rho",
+                      "latent_shape", "eqc_result", "method")
   expect_true(all(expected_names %in% names(sim)))
 })
 
@@ -264,12 +420,17 @@ test_that("dpmirt_simulate uses IRTsimrel when available (Rasch)", {
   expect_s3_class(sim, "dpmirt_sim")
   expect_equal(sim$method, "irtsimrel")
   expect_equal(sim$target_rho, 0.80)
+  expect_equal(sim$achieved_rho, sim$eqc_result$achieved_rho)
+  expect_true(is.numeric(sim$achieved_rho))
+  expect_length(sim$achieved_rho, 1)
+  expect_true(is.finite(sim$achieved_rho))
+  expect_equal(sim$reliability, DPMirt:::.compute_kr20(sim$response))
   expect_false(is.null(sim$eqc_result))
   expect_equal(dim(sim$response), c(200, 20))
   expect_true(all(sim$response %in% c(0, 1)))
 
   # EQC should achieve close to target reliability
-  expect_true(abs(sim$eqc_result$achieved_rho - 0.80) < 0.05)
+  expect_true(abs(sim$achieved_rho - 0.80) < 0.05)
 })
 
 
@@ -288,7 +449,11 @@ test_that("dpmirt_simulate uses IRTsimrel for 2PL", {
   expect_equal(sim$model, "2pl")
   expect_equal(length(sim$lambda), 20)
   expect_true(all(sim$lambda > 0))
-  expect_true(abs(sim$eqc_result$achieved_rho - 0.85) < 0.05)
+  expect_equal(sim$achieved_rho, sim$eqc_result$achieved_rho)
+  expect_true(is.numeric(sim$achieved_rho))
+  expect_length(sim$achieved_rho, 1)
+  expect_true(is.finite(sim$achieved_rho))
+  expect_true(abs(sim$achieved_rho - 0.85) < 0.05)
 })
 
 
@@ -351,10 +516,41 @@ test_that("dpmirt_simulate with IRTsimrel uses different reliability metrics", {
 
   expect_equal(sim_msem$method, "irtsimrel")
   expect_equal(sim_info$method, "irtsimrel")
+  expect_s3_class(sim_msem$eqc_result, "sac_result")
+  expect_s3_class(sim_info$eqc_result, "eqc_result")
+  expect_equal(sim_msem$eqc_result$metric, "msem")
+  expect_equal(sim_info$eqc_result$metric, "info")
+  expect_equal(sim_msem$achieved_rho, sim_msem$eqc_result$achieved_rho)
+  expect_equal(sim_info$achieved_rho, sim_info$eqc_result$achieved_rho)
+  expect_true(is.finite(sim_msem$achieved_rho))
+  expect_true(is.finite(sim_info$achieved_rho))
 
   # Different metrics may yield different c* values
   expect_false(identical(sim_msem$eqc_result$c_star,
                          sim_info$eqc_result$c_star))
+})
+
+
+test_that("dpmirt_simulate accepts valid custom IRTsimrel mixture", {
+  skip_if_not_installed("IRTsimrel")
+
+  sim <- dpmirt_simulate(
+    n_persons = 100, n_items = 8,
+    model = "rasch", target_rho = 0.70,
+    latent_shape = "custom",
+    latent_params = list(mixture_spec = list(
+      weights = c(0.5, 0.5),
+      means = c(-1, 1),
+      sds = c(0.5, 0.5)
+    )),
+    M = 1000,
+    seed = 42, use_irtsimrel = TRUE
+  )
+
+  expect_equal(sim$method, "irtsimrel")
+  expect_equal(sim$latent_shape, "custom")
+  expect_equal(sim$achieved_rho, sim$eqc_result$achieved_rho)
+  expect_true(is.finite(sim$achieved_rho))
 })
 
 
@@ -411,7 +607,7 @@ test_that("dpmirt_simulate gate criterion: reliability within tolerance", {
     item_source = "parametric",
     seed = 42, use_irtsimrel = TRUE
   )
-  expect_true(abs(sim_rasch$eqc_result$achieved_rho - 0.80) < tolerance)
+  expect_true(abs(sim_rasch$achieved_rho - 0.80) < tolerance)
 
   # 2PL
   sim_2pl <- dpmirt_simulate(
@@ -420,5 +616,5 @@ test_that("dpmirt_simulate gate criterion: reliability within tolerance", {
     item_source = "parametric",
     seed = 42, use_irtsimrel = TRUE
   )
-  expect_true(abs(sim_2pl$eqc_result$achieved_rho - 0.85) < tolerance)
+  expect_true(abs(sim_2pl$achieved_rho - 0.85) < tolerance)
 })

@@ -47,7 +47,9 @@
 #'     \item{\code{"items"}}{Item difficulty estimates with error bars.}
 #'     \item{\code{"trace"}}{Log-likelihood MCMC trace.}
 #'     \item{\code{"clusters"}}{Cluster count trace and histogram (DPM only).}
-#'     \item{\code{"dp_density"}}{DP mixture density with credible band (DPM only).}
+#'     \item{\code{"dp_density"}}{DP mixture density with credible band
+#'       (DPM only; see \code{\link{dpmirt_dp_density}} for the
+#'       transformed-scale caveat).}
 #'     \item{\code{"icc"}}{Item Characteristic Curves.}
 #'     \item{\code{"wright_map"}}{Person-Item map (Wright map).}
 #'     \item{\code{"parameter_trace"}}{Individual parameter MCMC traces.}
@@ -61,7 +63,13 @@
 #'   requires ggplot2.
 #' @param ... Additional arguments passed to the specific plotting function.
 #'
-#' @return Invisibly returns the plot object (ggplot) or NULL (base R).
+#' @return Invisibly returns a ggplot object when the ggplot2 backend is used;
+#'   invisibly returns \code{NULL} when the base R backend is used.
+#'
+#' @details For \code{type = "dp_density"}, Rasch/location-shift settings are
+#' the most directly interpretable. For transformed-scale 2PL/3PL IRT and SI
+#' fits, use the plot as a diagnostic summary because full scale/Jacobian
+#' density adjustment is not yet implemented.
 #'
 #' @examples
 #' \dontrun{
@@ -760,6 +768,8 @@ plot.dpmirt_fit <- function(x,
 #' @param param Character. Which parameter: \code{"theta"} or \code{"beta"}.
 #' @param ... Additional graphical parameters.
 #'
+#' @return Invisibly returns the input \code{dpmirt_estimates} object.
+#'
 #' @examples
 #' \dontrun{
 #' sim <- dpmirt_simulate(200, 20, model = "rasch", seed = 42)
@@ -875,6 +885,8 @@ plot.dpmirt_estimates <- function(x,
 #' @param type Character. Plot type: \code{"parameters"} (histograms of true
 #'   parameters) or \code{"response"} (heatmap of response matrix).
 #' @param ... Additional graphical parameters.
+#'
+#' @return Invisibly returns the input \code{dpmirt_sim} object.
 #'
 #' @examples
 #' \dontrun{

@@ -145,8 +145,8 @@ most closely.
 > them.
 
 If the pre-computed data are not installed, the figure above will not
-render. See
-[`vignette("simulation-study")`](https://joonho112.github.io/DPMirt/articles/simulation-study.md)
+render. See [Simulation
+Study](https://joonho112.github.io/DPMirt/articles/simulation-study.md)
 for generation instructions.
 
 ## 4. Posterior Mean (PM) Estimator
@@ -169,7 +169,7 @@ DPMirt returns it as `theta_pm` whenever you call
 
 ``` r
 
-# Compute only the posterior mean
+# Compute PM-only summaries
 est <- dpmirt_estimates(fit, methods = "pm")
 
 # Inspect first few values
@@ -324,9 +324,13 @@ represented faithfully.
 # Compute all three estimators
 est <- dpmirt_estimates(fit, methods = c("pm", "cb", "gr"))
 
-# GR estimates with posterior mean ranks
+# GR estimates with posterior mean ranks and integer GR ranks
 head(est$theta[, c("theta_pm", "theta_gr", "rbar", "rhat")])
 ```
+
+Here `rhat` is the integer rank used by the GR estimator. It is not the
+Gelman–Rubin R-hat diagnostic returned by
+[`dpmirt_diagnostics()`](https://joonho112.github.io/DPMirt/reference/dpmirt_diagnostics.md).
 
 ### Quality flags: ties
 
@@ -490,19 +494,23 @@ influence on recovery. {.table}
 ### Practical implications
 
 - **Low reliability** ($`\bar{w} \approx 0.50`$): Shrinkage dominates.
-  CB provides the largest EDF gains; model flexibility matters less
-  because posteriors concentrate around the prior regardless.
+  Estimator choice matters most. CB provides a simple variance
+  correction, while GR is usually preferable when ranking or EDF
+  recovery is the primary goal and the posterior ranks are stable.
 - **Moderate reliability** ($`\bar{w} \approx 0.70`$): Both estimator
   and prior contribute meaningfully. DPM + GR starts to outperform
   Normal + GR for non-normal populations. Most screening instruments
   (20–30 items) fall in this regime.
 - **High reliability** ($`\bar{w} \approx 0.90`$): All three estimators
   converge. Prior choice (DPM vs. Normal) becomes the primary driver of
-  EDF and ranking accuracy for non-normal distributions.
+  EDF and distribution-shape recovery for non-normal distributions;
+  ranking loss should still be checked separately when rank decisions
+  are the target.
 
 > **Rule of thumb.** If you have a short test and a non-normal
-> population, start with CB. If you have a long test and suspect
-> non-normality, invest in the DPM prior and use GR.
+> population, compare CB and GR rather than relying on PM alone. If you
+> have a longer test and suspect non-normality, invest in the DPM prior
+> and use GR for ranking or distributional summaries.
 
 ### Visualizing the reliability effect
 
@@ -580,10 +588,10 @@ inflating the variance (CB) or placing estimates at quantiles of the
 estimated EDF (GR), preserving the two-group structure.
 
 At high reliability (right panel), the data speak loudly enough that
-even PM preserves the bimodal shape. The three estimators converge, and
-the primary gains come from using the DPM prior rather than the Normal
-prior (see Section 5.4 of
-[`vignette("models-and-workflow")`](https://joonho112.github.io/DPMirt/articles/models-and-workflow.md)).
+even PM begins to preserve the bimodal shape. The three estimators move
+closer together, and the primary gains come from using the DPM prior
+rather than the Normal prior (see Section 5.4 of [Models and
+Workflow](https://joonho112.github.io/DPMirt/articles/models-and-workflow.md)).
 
 ### Quantifying the shrinkage
 
@@ -600,8 +608,9 @@ comparing the standard deviation of each estimator to the true SD.
 | Ratio CB/True |   0.707 |   1.125 |
 | Ratio GR/True |   0.703 |   1.123 |
 
-Dispersion of estimates relative to truth. At low reliability, PM
-retains only ~50% of the true SD; CB and GR recover ~80-95%. {.table}
+Dispersion of estimates relative to truth. At low reliability in this
+fixture, PM retains roughly half of the true SD, while CB and GR recover
+about 70%. {.table}
 
 > **Reading the table.** The “Ratio” rows reveal the shrinkage severity.
 > At $`\rho \approx 0.5`$, PM compresses the distribution to roughly
@@ -620,9 +629,9 @@ operational goals.
 | Primary Goal | Estimator | Prior Recommendation |
 |:---|:---|:---|
 | Individual scoring | PM | Either (Normal or DPM) |
-| Identify extreme students | GR | DPM if reliability \> 0.7 and non-normal suspected |
-| Proportion below cutoff | GR | DPM if reliability \> 0.7 |
-| Recover full distribution | GR | DPM strongly recommended |
+| Identify extreme students | GR | DPM when reliability is moderate/high and non-normality is suspected |
+| Proportion below cutoff | GR | DPM when reliability is moderate/high |
+| Recover full distribution | GR | DPM strongly recommended for non-normal populations |
 
 Quick-reference guide: estimator and prior by goal. {.table}
 
@@ -632,12 +641,12 @@ A simple three-step workflow: 1. **Determine your primary goal.** What
 will the scores be used for? If individual feedback, use PM. If
 classification, ranking, or distributional summaries, use GR. 2.
 **Assess reliability.** Estimate $`\bar{w}`$ from KR-20 or the model’s
-average posterior variance. If $`\bar{w} < 0.65`$, estimator choice
-dominates; if $`\bar{w} > 0.80`$, prior choice dominates. 3. **Choose
-the prior.** If reliability is high and there is reason to doubt
-normality (e.g., known floor/ceiling effects, gifted subpopulations,
-mixed curricula), use a DPM prior. Otherwise a Normal prior is
-sufficient.
+average posterior variance. As a practical heuristic, estimator choice
+dominates for short/low-reliability tests, while prior choice becomes
+more visible for longer/high-reliability tests. 3. **Choose the prior.**
+If reliability is high and there is reason to doubt normality (e.g.,
+known floor/ceiling effects, gifted subpopulations, mixed curricula),
+use a DPM prior. Otherwise a Normal prior is sufficient.
 
 ## 10. Loss Functions for Evaluation
 
@@ -666,8 +675,9 @@ rho=0.8). PM wins on MSEL; GR wins on MSELR and KS. {.table}
 
 The pattern is typical:
 
-- **MSEL:** PM $`<`$ GR $`<`$ CB — posterior mean minimises individual
-  MSE by construction.
+- **MSEL:** PM is smallest in the bundled fixture because posterior
+  means target individual squared-error loss; de-shrinking can raise
+  level MSE.
 - **MSELR:** GR $`<`$ PM $`\approx`$ CB — the triple-goal algorithm
   directly optimises ranking loss.
 - **KS:** GR $`<`$ CB $`<`$ PM — GR and CB both reduce distributional
@@ -708,8 +718,8 @@ loss_mae <- dpmirt_loss(
 print(loss_mae)
 ```
 
-See
-[`vignette("simulation-study")`](https://joonho112.github.io/DPMirt/articles/simulation-study.md)
+See [Simulation
+Study](https://joonho112.github.io/DPMirt/articles/simulation-study.md)
 for a full factorial comparison of loss across reliability levels,
 sample sizes, latent shapes, and priors.
 
@@ -734,16 +744,18 @@ This vignette has shown that:
 
 ### What next?
 
-- **Simulation study.** See
-  [`vignette("simulation-study")`](https://joonho112.github.io/DPMirt/articles/simulation-study.md)
+- **Simulation study.** See [Simulation
+  Study](https://joonho112.github.io/DPMirt/articles/simulation-study.md)
   for a full factorial evaluation of prior $`\times`$ estimator
   $`\times`$ reliability $`\times`$ latent shape.
-- **Prior elicitation.** See
-  [`vignette("prior-elicitation")`](https://joonho112.github.io/DPMirt/articles/prior-elicitation.md)
-  for principled selection of the DPM concentration parameter $`\alpha`$
-  using the DPprior package.
+- **Prior elicitation.** See [Prior
+  Elicitation](https://joonho112.github.io/DPMirt/articles/prior-elicitation.md)
+  for optional DPprior calibration of the DPM concentration parameter
+  $`\alpha`$ and the Gamma(1, 3) fallback.
 - **Getting started.** If you have not yet fit your first model, see
-  `vignette("getting-started")` for the basic DPMirt workflow.
+  [Quick
+  Start](https://joonho112.github.io/DPMirt/articles/quick-start.md) for
+  the basic DPMirt workflow.
 
 ### References
 
@@ -766,41 +778,41 @@ This vignette has shown that:
 
 &nbsp;
 
-    #> R version 4.5.1 (2025-06-13)
-    #> Platform: aarch64-apple-darwin20
+    #> R version 4.6.0 (2026-04-24)
+    #> Platform: aarch64-apple-darwin23
     #> Running under: macOS Tahoe 26.2
-    #> 
+    #>
     #> Matrix products: default
-    #> BLAS:   /Library/Frameworks/R.framework/Versions/4.5-arm64/Resources/lib/libRblas.0.dylib 
-    #> LAPACK: /Library/Frameworks/R.framework/Versions/4.5-arm64/Resources/lib/libRlapack.dylib;  LAPACK version 3.12.1
-    #> 
+    #> BLAS:   /Library/Frameworks/R.framework/Versions/4.6/Resources/lib/libRblas.0.dylib
+    #> LAPACK: /Library/Frameworks/R.framework/Versions/4.6/Resources/lib/libRlapack.dylib;  LAPACK version 3.12.1
+    #>
     #> locale:
     #> [1] C.UTF-8/C.UTF-8/C.UTF-8/C/C.UTF-8/C.UTF-8
-    #> 
+    #>
     #> time zone: America/Chicago
     #> tzcode source: internal
-    #> 
+    #>
     #> attached base packages:
-    #> [1] stats     graphics  grDevices utils     datasets  methods   base     
-    #> 
+    #> [1] stats     graphics  grDevices utils     datasets  methods   base
+    #>
     #> other attached packages:
-    #> [1] ggplot2_4.0.2 DPMirt_0.1.0 
-    #> 
+    #> [1] ggplot2_4.0.3 DPMirt_0.2.0  nimble_1.4.2
+    #>
     #> loaded via a namespace (and not attached):
-    #>  [1] gtable_0.3.6        jsonlite_2.0.0      dplyr_1.2.0        
-    #>  [4] compiler_4.5.1      tidyselect_1.2.1    parallel_4.5.1     
-    #>  [7] dichromat_2.0-0.1   jquerylib_0.1.4     systemfonts_1.3.1  
-    #> [10] scales_1.4.0        textshaping_1.0.1   yaml_2.3.12        
-    #> [13] fastmap_1.2.0       lattice_0.22-7      coda_0.19-4.1      
-    #> [16] R6_2.6.1            labeling_0.4.3      generics_0.1.4     
-    #> [19] igraph_2.2.1        nimble_1.4.0        knitr_1.50         
-    #> [22] htmlwidgets_1.6.4   tibble_3.3.1        desc_1.4.3         
-    #> [25] pillar_1.11.1       bslib_0.9.0         RColorBrewer_1.1-3 
-    #> [28] rlang_1.1.7         cachem_1.1.0        xfun_0.53          
-    #> [31] fs_1.6.6            sass_0.4.10         S7_0.2.1           
-    #> [34] cli_3.6.5           withr_3.0.2         pkgdown_2.2.0      
-    #> [37] magrittr_2.0.4      digest_0.6.37       grid_4.5.1         
-    #> [40] lifecycle_1.0.5     vctrs_0.7.1         evaluate_1.0.5     
-    #> [43] pracma_2.4.6        glue_1.8.0          farver_2.1.2       
-    #> [46] numDeriv_2016.8-1.1 ragg_1.4.0          rmarkdown_2.30     
-    #> [49] tools_4.5.1         pkgconfig_2.0.3     htmltools_0.5.8.1
+    #>  [1] gtable_0.3.6        jsonlite_2.0.0      dplyr_1.2.1
+    #>  [4] compiler_4.6.0      tidyselect_1.2.1    parallel_4.6.0
+    #>  [7] dichromat_2.0-0.1   jquerylib_0.1.4     systemfonts_1.3.2
+    #> [10] scales_1.4.0        textshaping_1.0.5   yaml_2.3.12
+    #> [13] fastmap_1.2.0       lattice_0.22-9      coda_0.19-4.1
+    #> [16] R6_2.6.1            labeling_0.4.3      generics_0.1.4
+    #> [19] igraph_2.3.1        knitr_1.51          htmlwidgets_1.6.4
+    #> [22] tibble_3.3.1        desc_1.4.3          pillar_1.11.1
+    #> [25] bslib_0.11.0        RColorBrewer_1.1-3  rlang_1.2.0
+    #> [28] cachem_1.1.0        xfun_0.57           S7_0.2.2
+    #> [31] fs_2.1.0            sass_0.4.10         otel_0.2.0
+    #> [34] cli_3.6.6           withr_3.0.2         pkgdown_2.2.0
+    #> [37] magrittr_2.0.5      digest_0.6.39       grid_4.6.0
+    #> [40] lifecycle_1.0.5     vctrs_0.7.3         evaluate_1.0.5
+    #> [43] pracma_2.4.6        glue_1.8.1          farver_2.1.2
+    #> [46] numDeriv_2016.8-1.1 ragg_1.5.2          rmarkdown_2.31
+    #> [49] tools_4.6.0         pkgconfig_2.0.3     htmltools_0.5.9

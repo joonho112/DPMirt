@@ -64,7 +64,7 @@ This vignette covers:
 1. **Why $\alpha$ matters** --- its three operational dimensions.
 2. **Paganin default vs. principled elicitation** --- when $\text{Gamma}(1,3)$
    is adequate and when it is not.
-3. **DPprior integration** --- three routes to set $\alpha$ in DPMirt.
+3. **DPprior integration** --- several routes to set $\alpha$ in DPMirt.
 4. **Two strategies from Lee (2026)** --- DP-diffuse and DP-inform.
 5. **Sensitivity analysis** --- comparing posteriors under different priors.
 6. **Fallback behavior** --- what happens when DPprior is not installed.
@@ -141,8 +141,9 @@ text(1.2, max(dens_default) * 0.8,
 
 ## DPprior Integration
 
-DPMirt offers three ways to set the $\alpha$ prior, ranging from fully
-automated to fully manual.
+DPMirt offers several ways to set the $\alpha$ prior, ranging from the
+conservative default to fully manual DPprior workflows. DPprior is optional:
+when it is unavailable, DPMirt falls back to $\text{Gamma}(1, 3)$.
 
 ### Method 1: `dpmirt_alpha_prior()` Wrapper
 
@@ -156,13 +157,33 @@ ab
 ```
 
 ```{r alpha-prior-wrapper-show, eval = !has_dpprior}
-# DPprior not installed --- showing expected output
-cat("Alpha prior: Gamma(1.60, 0.82) [E[alpha]=1.96]\n")
-cat("  a     b \n")
-cat("1.60  0.82\n")
+# DPprior not installed --- showing the DPMirt fallback
+cat("DPprior not installed; DPMirt returns c(a = 1, b = 3).\n")
+cat("Install DPprior to run the calibrated example above.\n")
 ```
 
-### Method 2: Elicit Then Pass to `dpmirt()`
+### Method 2: One-Step Auto-Elicitation
+
+In the one-step wrapper, set `mu_K` and optionally `confidence` to ask
+DPMirt to elicit the prior before model construction:
+
+```r
+fit <- dpmirt(
+  data,
+  model      = "rasch",
+  prior      = "dpm",
+  mu_K       = 5,
+  confidence = "medium",
+  niter      = 10000,
+  nburnin    = 2000
+)
+```
+
+This path calls `dpmirt_alpha_prior()` only when `prior = "dpm"`,
+`alpha_prior = NULL`, and `mu_K` is not `NULL`. If `mu_K = NULL`, the
+one-step wrapper uses the conservative $\text{Gamma}(1, 3)$ default.
+
+### Method 3: Elicit Then Pass to `dpmirt()`
 
 Elicit the prior first with `dpmirt_alpha_prior()`, then pass the
 result directly as `alpha_prior`:
@@ -180,7 +201,7 @@ fit <- dpmirt(
 )
 ```
 
-### Method 3: Manual DPprior Workflow
+### Method 4: Manual DPprior Workflow
 
 For maximum control, call DPprior directly and pass the result:
 
@@ -202,7 +223,7 @@ fit <- dpmirt(
 )
 ```
 
-### Method 4: Return the Full DPprior_fit Object
+### Method 5: Return the Full DPprior_fit Object
 
 For access to diagnostics and convergence information, use `return_fit = TRUE`:
 
@@ -219,7 +240,8 @@ print(fit_prior)
 ```
 
 ```{r alpha-prior-full-fallback, eval = !has_dpprior, echo = FALSE}
-cat("DPprior not installed --- the return_fit option requires DPprior.\n")
+cat("DPprior not installed --- return_fit = TRUE falls back to c(a = 1, b = 3).\n")
+cat("Install DPprior to receive a full DPprior_fit object with diagnostics.\n")
 ```
 
 ### Confidence Levels
@@ -249,19 +271,17 @@ knitr::kable(conf_table,
 ```
 
 ```{r confidence-table-fallback, eval = !has_dpprior, echo = FALSE}
-# Fallback display when DPprior is not installed
-cat("Confidence |   a   |   b   | E[alpha] | CV[alpha] | Var(K)\n")
-cat("-----------|-------|-------|----------|-----------|-------\n")
-cat("low        | 0.640 | 0.327 |   1.960  |   1.250   | 12.50\n")
-cat("medium     | 1.600 | 0.816 |   1.960  |   0.791   |  5.00\n")
-cat("high       | 4.000 | 2.041 |   1.960  |   0.500   |  2.00\n")
+cat("DPprior not installed; confidence levels are not calibrated.\n")
+cat("DPMirt uses the conservative fallback alpha ~ Gamma(1, 3).\n")
 ```
 
 > **Interpretation:** Higher confidence concentrates the Gamma prior
 > (lower CV), constraining $\alpha$ and thereby the cluster count.
 > Low confidence yields a diffuse prior that lets the data determine
-> cluster structure.  All three levels share the same prior mean for
-> $\alpha$, differing only in spread.
+> cluster structure.  The confidence levels target the same expected
+> cluster count, but the fitted Gamma mean for $\alpha$ can shift slightly;
+> the main effect is reduced prior dispersion around the cluster-count
+> target.
 
 Note that DPprior calls are analytic (closed-form or fast Newton iteration)
 and complete in milliseconds --- no MCMC is involved.
@@ -280,7 +300,7 @@ to the sample size:
 ```{r dp-diffuse, eval = has_dpprior}
 # DP-diffuse: set mu_K to log(N), low confidence
 N <- 200
-mu_K_diffuse <- max(3, ceiling(log(N)))  # ~5 for N=200
+mu_K_diffuse <- max(3, ceiling(log(N)))  # 6 for N = 200
 
 ab_diffuse <- dpmirt_alpha_prior(N = N, mu_K = mu_K_diffuse,
                                   confidence = "low")
@@ -289,8 +309,12 @@ cat("DP-diffuse: Gamma(", round(ab_diffuse["a"], 2), ", ",
 cat("  E[alpha] =", round(ab_diffuse["a"] / ab_diffuse["b"], 2), "\n")
 ```
 
-This is the strategy DPMirt uses when `mu_K = NULL` is left at its
-default.
+This shares the default cluster-count target
+`mu_K = max(3, ceiling(log(N)))` used by `dpmirt_alpha_prior(N)`, but the
+explicit `confidence = "low"` choice is deliberately more diffuse than the
+function's default `confidence = "medium"`. The one-step `dpmirt()` wrapper
+does not auto-elicit unless you set `mu_K`; with `mu_K = NULL` and
+`alpha_prior = NULL`, it uses the conservative $\text{Gamma}(1, 3)$ default.
 
 ### DP-Inform (Domain-Driven)
 
@@ -325,7 +349,7 @@ plot(alpha_grid, dens_diffuse, type = "l", lwd = 2, col = pal$semiparametric,
 lines(alpha_grid, dens_inform, lwd = 2, col = pal$parametric)
 lines(alpha_grid, dens_paganin, lwd = 2, col = pal$reference, lty = 2)
 legend("topright",
-       legend = c("DP-diffuse (low, mu_K=5)",
+       legend = c(paste0("DP-diffuse (low, mu_K=", mu_K_diffuse, ")"),
                    "DP-inform (high, mu_K=3)",
                    "Paganin Gamma(1,3)"),
        col    = c(pal$semiparametric, pal$parametric, pal$reference),
@@ -339,17 +363,23 @@ different prior specifications.
 Here we compare posterior results from three $\alpha$ priors applied to
 the same data.
 
-The fits below were pre-computed.
-Each used a Rasch-DPM model on the same bimodal data set ($N = 200$,
+The compact fixtures below retain evenly thinned posterior draws from
+pre-computed Rasch-DPM fits on the same bimodal data set ($N = 200$,
 $I = 25$):
 
 ```{r load-sensitivity, eval = has_data}
 sens <- readRDS(find_extdata("vignette_sensitivity_fits.rds"))
 
+prior_labels <- c(
+  default = "Paganin Gamma(1,3)",
+  broad   = "Broad Gamma(0.5,1)",
+  inform  = "Informative Gamma(3,1)"
+)
+
 # sens contains:
 #   $default   - Gamma(1, 3) [Paganin default]
-#   $broad     - DP-diffuse
-#   $inform    - DP-inform
+#   $broad     - Gamma(0.5, 1) [manual broad prior]
+#   $inform    - Gamma(3, 1) [manual informative prior]
 ```
 
 ### Posterior Density Comparison
@@ -373,7 +403,7 @@ plot(dens_p, xlim = xlim, ylim = ylim, col = pal$reference, lwd = 2,
 lines(dens_d, col = pal$semiparametric, lwd = 2)
 lines(dens_i, col = pal$parametric, lwd = 2)
 legend("topright",
-       legend = c("Paganin Gamma(1,3)", "DP-diffuse", "DP-inform"),
+       legend = unname(prior_labels[c("default", "broad", "inform")]),
        col = c(pal$reference, pal$semiparametric, pal$parametric),
        lwd = 2, lty = c(2, 1, 1), bty = "n")
 ```
@@ -382,7 +412,7 @@ legend("topright",
 
 ```{r sensitivity-clusters, eval = has_data}
 cluster_summary <- data.frame(
-  Prior          = c("Paganin Gamma(1,3)", "DP-diffuse", "DP-inform"),
+  Prior          = unname(prior_labels[c("default", "broad", "inform")]),
   Median_K       = c(median(sens$default$cluster_info$n_clusters),
                      median(sens$broad$cluster_info$n_clusters),
                      median(sens$inform$cluster_info$n_clusters)),
@@ -412,15 +442,17 @@ knitr::kable(cluster_summary,
 > and $N \ge 100$), the posterior distributions of theta tend to be
 > robust to the choice of alpha prior.  The main differences appear in
 > the number of active clusters and the posterior uncertainty around alpha
-> itself.  WAIC can help discriminate, but differences are often small.
+> itself. WAIC can help assess item-response prediction, but differences are
+> often small and do not by themselves establish ability-distribution
+> recovery.
 
 The convergence observed here reflects the moderately high reliability
 ($\bar{w} \approx 0.8$) of the 25-item test.  For shorter tests with
 lower reliability ($\bar{w} \approx 0.5$), the alpha prior may exert
 stronger influence on the posterior because the data provide less
-information to overcome the prior.  See `vignette("posterior-summaries")`
-for a detailed analysis of how reliability moderates both estimator
-choice and prior choice.
+information to overcome the prior. See
+[Posterior Summaries](posterior-summaries.html) for a detailed analysis of
+how reliability moderates both estimator choice and prior choice.
 
 ## Fallback Behavior
 
@@ -443,8 +475,9 @@ if (!has_dpprior) {
 }
 ```
 
-This design ensures that DPMirt works out of the box while encouraging
-users to install DPprior for better-calibrated priors.
+This design ensures that DPMirt works out of the box. Installing DPprior
+enables calibrated alternatives when you have a target expected cluster
+count or want to inspect the full DPprior fit.
 DPprior is listed in `Suggests`, not `Imports`, so it is never a hard
 dependency.
 
@@ -483,7 +516,7 @@ spec <- dpmirt_spec(
   data,
   model        = "rasch",
   prior        = "dpm",
-  alpha_prior  = c(a = 1.6, b = 0.82),
+  alpha_prior  = c(a = 1, b = 3),
   base_measure = list(s2_mu = 3, nu1 = 2.01, nu2 = 1.01)
 )
 
@@ -512,11 +545,12 @@ The following summary may help decide which approach to use:
 
 | Scenario | Recommended approach | Code |
 |:---------|:---------------------|:-----|
-| No domain knowledge, exploratory | DP-diffuse | `dpmirt(data, prior = "dpm")` |
+| Conservative default | Paganin Gamma(1,3) | `dpmirt(data, prior = "dpm")` |
+| No domain knowledge, exploratory | DP-diffuse | `dpmirt(data, prior = "dpm", mu_K = max(3, ceiling(log(N))), confidence = "low")` |
 | Substantive belief about subgroups | DP-inform | `dpmirt(data, prior = "dpm", mu_K = 3, confidence = "high")` |
 | Reproducing Paganin et al. | Manual Gamma(1,3) | `dpmirt(data, prior = "dpm", alpha_prior = c(1, 3))` |
-| Comparing priors | Sensitivity analysis | Fit multiple models, compare WAIC and posteriors |
-| DPprior not available | Automatic fallback | `dpmirt(data, prior = "dpm")` --- uses Gamma(1,3) with message |
+| Comparing priors | Sensitivity analysis | Fit multiple models, compare posterior summaries and predictive WAIC |
+| DPprior not available | Automatic fallback | `dpmirt(data, prior = "dpm", mu_K = 5)` --- falls back to Gamma(1,3) with message |
 
 ## What's Next?
 
@@ -525,9 +559,9 @@ vignettes show how to put them to work:
 
 | Vignette | Why read it |
 |:---------|:------------|
-| *Quick Start* | End-to-end pipeline with data simulation, fitting, and estimation |
-| *Simulation Study* | Full factorial study comparing Normal vs. DPM priors under different conditions |
-| *Under the Hood* | How DPMirt generates NIMBLE code, compiles, and samples |
+| [Quick Start](quick-start.html) | End-to-end pipeline with data simulation, fitting, and estimation |
+| [Simulation Study](simulation-study.html) | Full factorial study comparing Normal vs. DPM priors under different conditions |
+| [NIMBLE Internals](nimble-internals.html) | How DPMirt generates NIMBLE code, compiles, and samples |
 
 ## References
 

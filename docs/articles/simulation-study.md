@@ -7,8 +7,8 @@ because they provide access to the ground truth — the true person
 abilities and item parameters that generated the data. DPMirt provides
 an integrated simulation framework that lets you:
 
-1.  **Simulate** data under known conditions using IRTsimrel’s EQC
-    calibration (or a built-in fallback).
+1.  **Simulate** data under known conditions using IRTsimrel calibration
+    for Rasch/2PL models, or DPMirt’s built-in fallback.
 2.  **Fit** models under competing prior specifications (Normal
     vs. DPM).
 3.  **Estimate** person abilities using three posterior summary methods
@@ -35,7 +35,8 @@ design crossing three factors:
 
 The **Normal** condition is the parametric model’s “home turf” where DPM
 offers little advantage. The **Bimodal** and **Skew** conditions
-represent departures where flexible priors should excel.
+represent departures where flexible priors may help, especially for
+distributional summaries.
 
 ### Factor 2: Sample Size ($`N`$)
 
@@ -59,10 +60,11 @@ degree of posterior shrinkage.
 Reliability levels and their implications for IRT estimation. {.table}
 
 > **Why reliability dominates:** At $`\bar{w} = 0.50`$, each person’s
-> posterior is heavily shrunk toward the prior — there is little room
-> for any method to differ from another. At $`\bar{w} = 0.90`$,
-> posteriors are tightly concentrated around data-driven estimates,
-> amplifying the impact of prior misspecification.
+> posterior is heavily shrunk toward the prior, so prior differences are
+> harder to see and estimator choice can dominate distributional
+> recovery. At $`\bar{w} = 0.90`$, posteriors are tightly concentrated
+> around data-driven estimates, making prior misspecification easier to
+> detect.
 
 ### Full Design Matrix
 
@@ -96,8 +98,9 @@ Full 3 x 2 x 3 factorial design (18 conditions). {.table}
 ### IRTsimrel Integration
 
 DPMirt uses the **IRTsimrel** package (when available) to achieve
-precise reliability targeting via Empirical Quadrature Calibration
-(EQC). The key function is
+precise reliability targeting for Rasch and 2PL simulations. The default
+average-information metric uses Empirical Quadrature Calibration (EQC);
+MSEM-based targets use IRTsimrel’s SAC calibration. The key function is
 [`dpmirt_simulate()`](https://joonho112.github.io/DPMirt/reference/dpmirt_simulate.md):
 
 ``` r
@@ -115,28 +118,35 @@ sim <- dpmirt_simulate(
 sim
 #> DPMirt Simulated Data
 #> =====================
-#> Model:         RASCH 
-#> Persons:       200 
-#> Items:         25 
-#> Distribution:  bimodal 
-#> Method:        irtsimrel 
-#> Target rho:    0.8 
-#> KR-20:         0.81 
-#> EQC c*:        0.935 
-#> EQC rho:       0.8
+#> Model:         RASCH
+#> Persons:       200
+#> Items:         25
+#> Distribution:  bimodal
+#> Method:        irtsimrel
+#> Target rho:    0.8
+#> KR-20:         0.798
+#> EQC c*:       0.9356
+#> EQC rho:      0.8
 ```
 
 The returned `dpmirt_sim` object reports:
 
-- **Method**: “irtsimrel” (EQC-calibrated) or “fallback” (Paganin-style)
+- **Method**: “irtsimrel” (IRTsimrel-calibrated) or “fallback”
+  (Paganin-style)
 - **KR-20**: Empirical reliability of the generated data
-- **EQC c**\*: The calibration constant that maps target reliability to
-  the number of items
+- **Achieved rho**: IRTsimrel calibration-level achieved marginal
+  reliability (`sim$achieved_rho`) when IRTsimrel was used; `NULL` for
+  fallback simulations
+- **Target rho**: the requested reliability when IRTsimrel was used;
+  `NULL` for fallback simulations
+- **Calibration c**\*: the calibration constant when IRTsimrel was used
 
-When IRTsimrel is not installed,
+When IRTsimrel is not installed, or when `model = "3pl"`,
 [`dpmirt_simulate()`](https://joonho112.github.io/DPMirt/reference/dpmirt_simulate.md)
 falls back to a simpler simulation with evenly spaced item difficulties
-and no reliability targeting.
+and no reliability targeting. 3PL fallback simulations include
+Beta-distributed guessing parameters `delta`, and `target_rho` is not
+used.
 
 ### Visualizing the Simulated Data
 
@@ -197,19 +207,22 @@ fit_normal <- dpmirt(
   prior   = "normal",
   niter   = 10000,
   nburnin = 2000,
+  thin    = 32,
+  thin2   = 32,
   seed    = 100
 )
 
 # --- Fit DPM prior model (~2 min compilation + sampling) ---
+# Bundled fixtures use the conservative Gamma(1,3) alpha prior.
 fit_dpm <- dpmirt(
   sim$response,
-  model      = "rasch",
-  prior      = "dpm",
-  mu_K       = 5,
-  confidence = "medium",
-  niter      = 10000,
-  nburnin    = 2000,
-  seed       = 200
+  model   = "rasch",
+  prior   = "dpm",
+  niter   = 10000,
+  nburnin = 2000,
+  thin    = 32,
+  thin2   = 32,
+  seed    = 101
 )
 ```
 
@@ -244,7 +257,9 @@ combined_loss <- rbind(loss_normal, loss_dpm)
 
 ### Loading Pre-Computed Results
 
-For this vignette, all fitting results are pre-computed:
+For this vignette, all fitting results are pre-computed: the bundled DPM
+fixtures use the conservative $`\text{Gamma}(1,3)`$ prior for
+$`\alpha`$, so the example does not require DPprior.
 
 ``` r
 
@@ -261,10 +276,11 @@ loss_results <- readRDS(find_extdata("vignette_loss_results.rds"))
 ## Single Condition Deep Dive
 
 We focus on the most informative condition: **Bimodal**, $`N = 200`$,
-$`\bar{w} \approx 0.8`$. This is where the DPM prior should show the
-clearest advantage over the Normal prior, because the true latent
-distribution violates the Gaussian assumption and the data are
-informative enough for the posterior to reflect that violation.
+$`\bar{w} \approx 0.8`$. This condition is useful because the true
+latent distribution violates the Gaussian assumption while the data are
+informative enough to compare posterior summaries. In the bundled
+fixture, the DPM prior has its clearest edge on the KS distributional
+loss, while Normal-prior GR is slightly better on the rank loss.
 
 ### Posterior Density Overlay
 
@@ -312,19 +328,19 @@ ggplot(df_dens, aes(x = value, colour = Method, linetype = Method)) +
 ```
 
 ![Density estimates from six method-prior combinations overlaid with the
-true latent density. DPM-based methods (warm colors) better capture the
-bimodal
-shape.](simulation-study_files/figure-html/density-overlay-1.png)
+true latent density. In this fixture, DPM-GR gives the smallest KS loss
+while posterior means remain visibly
+shrunk.](simulation-study_files/figure-html/density-overlay-1.png)
 
 Density estimates from six method-prior combinations overlaid with the
-true latent density. DPM-based methods (warm colors) better capture the
-bimodal shape.
+true latent density. In this fixture, DPM-GR gives the smallest KS loss
+while posterior means remain visibly shrunk.
 
-> **What to look for:** Under the Normal prior, all three estimators
-> (PM, CB, GR) tend to “fill in” the valley between the two modes
-> because the Gaussian assumption forces a unimodal shape. The DPM-based
-> estimators, especially CB and GR, better preserve the bimodal
-> structure.
+> **What to look for:** Posterior means are visibly compressed under
+> both priors. CB and GR de-shrink the estimates, and in this fixture
+> DPM-GR has the smallest KS distance to the true distribution. Ranking
+> and individual MSE should be read from the loss table rather than
+> inferred from the density alone.
 
 ### Shrinkage Comparison
 
@@ -347,12 +363,12 @@ plot(theta_true, est_comparison$dpm$theta$theta_pm,
 abline(0, 1, col = pal$reference, lwd = 1.5, lty = 2)
 ```
 
-![Posterior mean (PM) estimates vs. true theta. Normal-PM shows stronger
-shrinkage toward zero; DPM-PM preserves extreme values
-better.](simulation-study_files/figure-html/shrinkage-plot-1.png)
+![Posterior mean (PM) estimates vs. true theta. PM estimates are shrunk
+toward the center under both priors in this
+fixture.](simulation-study_files/figure-html/shrinkage-plot-1.png)
 
-Posterior mean (PM) estimates vs. true theta. Normal-PM shows stronger
-shrinkage toward zero; DPM-PM preserves extreme values better.
+Posterior mean (PM) estimates vs. true theta. PM estimates are shrunk
+toward the center under both priors in this fixture.
 
 ``` r
 
@@ -459,19 +475,17 @@ ggplot(loss_long, aes(x = Method, y = Loss, fill = Method)) +
 ```
 
 ![Bar chart of loss values across six methods. Lower is better for all
-three metrics. PM wins on MSEL (individual accuracy); GR wins on MSELR
-(ranking) and KS (distributional
-fidelity).](simulation-study_files/figure-html/loss-barplot-1.png)
+three metrics; the best prior-method combination differs by
+metric.](simulation-study_files/figure-html/loss-barplot-1.png)
 
 Bar chart of loss values across six methods. Lower is better for all
-three metrics. PM wins on MSEL (individual accuracy); GR wins on MSELR
-(ranking) and KS (distributional fidelity).
+three metrics; the best prior-method combination differs by metric.
 
 ### Low-Reliability Contrast
 
 The deep dive above used a 25-item test ($`\bar{w} \approx 0.8`$) where
-the data are informative enough for the DPM prior to shine. How do the
-patterns change when reliability is much lower?
+the data are informative enough to compare prior and estimator choices.
+How do the patterns change when reliability is much lower?
 
 ``` r
 
@@ -515,20 +529,17 @@ ggplot(df_rel, aes(x = value, colour = Method, fill = Method)) +
 ```
 
 ![Posterior density comparison at two reliability levels (DPM prior
-only). Left (\$\rho \approx 0.5\$, 10 items): severe shrinkage causes PM
-to collapse the bimodal distribution into a single narrow peak. CB and
-GR resist compression, preserving the two-group structure. Right (\$\rho
-\approx 0.8\$, 25 items): shrinkage is mild; all three estimators
-recover the bimodal shape, with GR tracking the truth most
-closely.](simulation-study_files/figure-html/lowrel-comparison-1.png)
+only). Left (\$\rho \approx 0.5\$, 10 items): severe shrinkage
+compresses PM toward the center, while CB and GR recover more spread.
+Right (\$\rho \approx 0.8\$, 25 items): shrinkage is milder and the
+estimators move closer
+together.](simulation-study_files/figure-html/lowrel-comparison-1.png)
 
 Posterior density comparison at two reliability levels (DPM prior only).
-Left ($`\rho \approx 0.5`$, 10 items): severe shrinkage causes PM to
-collapse the bimodal distribution into a single narrow peak. CB and GR
-resist compression, preserving the two-group structure. Right
-($`\rho \approx 0.8`$, 25 items): shrinkage is mild; all three
-estimators recover the bimodal shape, with GR tracking the truth most
-closely.
+Left ($`\rho \approx 0.5`$, 10 items): severe shrinkage compresses PM
+toward the center, while CB and GR recover more spread. Right
+($`\rho \approx 0.8`$, 25 items): shrinkage is milder and the estimators
+move closer together.
 
 | Reliability | Method |   MSEL |    MSELR |    KS |
 |:------------|:-------|-------:|---------:|------:|
@@ -546,8 +557,10 @@ between PM and GR on KS widens substantially. {.table}
 > estimator (PM vs. CB vs. GR) matters more than the choice of prior,
 > because every person’s posterior is heavily shrunk toward the prior
 > center. CB and GR resist this compression, producing estimates whose
-> distribution more closely tracks the truth — even though their
-> individual-level MSE (MSEL) is slightly higher than PM’s.
+> distribution more closely tracks the truth. In this bundled
+> low-reliability fixture, CB and GR also improve MSEL relative to PM,
+> so the direction of the MSEL tradeoff should be checked empirically
+> rather than assumed.
 
 ### Dispersion Recovery at Two Reliability Levels
 
@@ -565,8 +578,9 @@ recovers the true dispersion. {.table}
 > $`\approx 0.50`$), effectively destroying the bimodal structure. The
 > GR estimator retains about 70% of the true dispersion (GR/True
 > $`\approx 0.70`$), substantially reducing the information loss. At
-> high reliability, all estimators converge toward the true spread — the
-> shrinkage effect becomes negligible.
+> high reliability, the estimators move closer to the true spread,
+> though shrinkage and prior effects should still be checked with the
+> relevant loss metric.
 
 ## Key Patterns
 
@@ -576,17 +590,18 @@ The simulation study from Lee & Wind reveals four main findings:
 
 Across all conditions, the marginal reliability $`\bar{w}`$ is a
 stronger predictor of estimator performance than sample size $`N`$. At
-$`\bar{w} = 0.50`$, all six methods produce similar results because the
-data are too weak to distinguish methods. At $`\bar{w} = 0.90`$, method
-differences are amplified.
+$`\bar{w} = 0.50`$, prior-family differences are harder to distinguish
+because the data are weak; estimator choice can still matter for
+distributional loss. At $`\bar{w} = 0.90`$, prior-family and estimator
+differences can become easier to see.
 
 > **Implication:** Invest in longer tests (more items) rather than
 > larger samples if your goal is to discriminate between Normal and DPM
 > priors.
 
-### Finding 2: DPM Advantage Under Non-Normality + High Reliability
+### Finding 2: DPM Can Help Under Non-Normality + Sufficient Reliability
 
-The DPM prior shows its largest advantage when:
+The DPM prior is most likely to help when:
 
 - The true latent distribution is non-normal (bimodal or skewed),
   **and**
@@ -595,23 +610,25 @@ The DPM prior shows its largest advantage when:
 Under normality, the DPM prior performs comparably to the Normal prior —
 the DP adapts to the true distribution and does not distort it.
 
-### Finding 3: PM Best for Individual MSE; GR Best for KS
+### Finding 3: Match the Estimator to the Loss
 
 The three posterior summary methods optimize different goals:
 
 | Method | Strength | When to use |
 |:---|:---|:---|
-| **PM** | Lowest individual MSE (MSEL) | Point predictions for each person |
+| **PM** | Targets individual MSE (MSEL) | Point predictions for each person |
 | **CB** | Better distributional match than PM | Group-level summary statistics |
 | **GR** | Lowest KS distance | Percentile reports, distributional inference |
 
-PM is the traditional choice and remains best for Goal 1 (minimizing
-per-person squared error). However, PM always over-shrinks toward the
-prior center, producing estimates whose empirical distribution is too
-narrow.
+PM is the traditional choice for Goal 1 (minimizing per-person squared
+error), though finite-sample fixtures can occasionally favor a de-shrunk
+estimator on MSEL. However, PM tends to over-shrink toward the prior
+center, producing estimates whose empirical distribution is too narrow
+when distributional recovery is the goal.
 
 CB and GR “de-shrink” the estimates to better match the true
-distribution, at a small cost to individual MSE.
+distribution, often at a cost to individual MSE, but the realized
+tradeoff should be read from the loss table.
 
 ### Finding 4: No One-Size-Fits-All
 
@@ -624,8 +641,10 @@ loss functions simultaneously. The optimal choice depends on:
   reporting).
 
 > **Recommendation:** For routine use, fit both Normal and DPM models,
-> compare via WAIC, and select the estimator (PM, CB, or GR) that
-> matches your reporting goals.
+> compare predictive fit with WAIC, inspect posterior-summary densities,
+> and select the estimator (PM, CB, or GR) that matches your reporting
+> goals. WAIC evaluates item-response prediction, not
+> ability-distribution recovery.
 
 ## Scaling to a Full Study
 
@@ -644,6 +663,14 @@ shown but **not executed** in the vignette:
 # ============================================================
 
 library(DPMirt)
+
+if (!requireNamespace("IRTsimrel", quietly = TRUE)) {
+  stop(
+    "This template uses IRTsimrel reliability targeting and the 'skew_pos' ",
+    "latent-shape name. Install IRTsimrel, or replace 'skew_pos' with ",
+    "'skewed' and remove reliability-targeting assumptions."
+  )
+}
 
 # --- Design ---
 conditions <- expand.grid(
@@ -680,6 +707,10 @@ for (cond in seq_len(nrow(conditions))) {
       seed         = rep_seed
     )
 
+    if (!identical(sim$method, "irtsimrel")) {
+      stop("Expected IRTsimrel simulation for this reliability-targeted study.")
+    }
+
     # --- Step 2: Fit Normal ---
     fit_n <- dpmirt(
       sim$response,
@@ -694,14 +725,12 @@ for (cond in seq_len(nrow(conditions))) {
     # --- Step 3: Fit DPM ---
     fit_d <- dpmirt(
       sim$response,
-      model      = "rasch",
-      prior      = "dpm",
-      mu_K       = 5,
-      confidence = "medium",
-      niter      = 10000,
-      nburnin    = 2000,
-      seed       = rep_seed + 2,
-      verbose    = FALSE
+      model   = "rasch",
+      prior   = "dpm",
+      niter   = 10000,
+      nburnin = 2000,
+      seed    = rep_seed + 2,
+      verbose = FALSE
     )
 
     # --- Step 4: Estimate ---
@@ -725,6 +754,7 @@ for (cond in seq_len(nrow(conditions))) {
       latent_shape = cfg$latent_shape,
       n_persons    = cfg$n_persons,
       target_rho   = cfg$target_rho,
+      achieved_rho = sim$achieved_rho,
       waic_normal  = fit_n$waic,
       waic_dpm     = fit_d$waic,
       reliability  = sim$reliability
@@ -761,6 +791,11 @@ results_list <- mclapply(
   mc.cores = 4
 )
 ```
+
+This template assumes IRTsimrel is installed for Rasch reliability
+targeting and for the `skew_pos` latent-shape name. Without IRTsimrel,
+DPMirt uses the fallback simulator, ignores `target_rho`, and supports
+the fallback shape names `"normal"`, `"bimodal"`, and `"skewed"`.
 
 ### Aggregation and Reporting
 
@@ -815,16 +850,32 @@ With IRTsimrel installed, you have access to 12 distribution shapes:
 
 ``` r
 
-# All supported shapes (when IRTsimrel is available)
+# Built-in supported shapes (when IRTsimrel is available)
 shapes <- c("normal", "bimodal", "trimodal", "multimodal",
             "skew_pos", "skew_neg", "heavy_tail", "light_tail",
-            "uniform", "floor", "ceiling", "custom")
+            "uniform", "floor", "ceiling")
 
 for (shape in shapes) {
   sim <- dpmirt_simulate(200, 25, latent_shape = shape, seed = 42)
   cat(shape, ": KR-20 =", round(sim$reliability, 3), "\n")
 }
+
+# Custom shapes require IRTsimrel, a Rasch or 2PL simulation,
+# and latent_params = list(mixture_spec = ...).
+custom_sim <- dpmirt_simulate(
+  200, 25,
+  latent_shape  = "custom",
+  latent_params = list(mixture_spec = list(
+    weights = c(0.5, 0.5),
+    means   = c(-1, 1),
+    sds     = c(0.5, 0.5)
+  )),
+  seed          = 42
+)
 ```
+
+Custom latent distributions are not available in fallback simulation or
+for 3PL.
 
 ### Custom Loss Functions
 
@@ -859,8 +910,12 @@ converged properly.
 
 cat("Target reliability:", 0.8, "\n")
 #> Target reliability: 0.8
-cat("Achieved KR-20:   ", round(sim$reliability, 4), "\n")
-#> Achieved KR-20:    0.8099
+cat("Empirical KR-20: ", round(sim$reliability, 4), "\n")
+#> Empirical KR-20:  0.7983
+if (!is.null(sim$achieved_rho)) {
+  cat("Calibration rho: ", round(sim$achieved_rho, 4), "\n")
+}
+#> Calibration rho:  0.8
 cat("Simulation method: ", sim$method, "\n")
 #> Simulation method:  irtsimrel
 ```
@@ -872,7 +927,7 @@ For pre-computed fits, you would check:
 ``` r
 
 # Minimum ESS across all parameters
-min(fit$ess$items)   # Should be > 400 for 8000 post-burnin samples
+min(fit$ess$items)   # Review relative to retained thinned draws
 min(fit$ess$theta)
 
 # Trace plot
@@ -883,32 +938,37 @@ cat("WAIC Normal:", fit_normal$waic, "\n")
 cat("WAIC DPM:   ", fit_dpm$waic, "\n")
 ```
 
+For the bundled compact fixtures, ESS is computed from 250 retained
+thinned draws and is intended for documentation-scale screening. Use
+full simulation runs, with many more retained draws, for convergence
+assessment in a study.
+
 ### Check 3: Posterior Predictive Check
 
 ``` r
 
 # Compare observed vs. predicted sum score distribution
-plot(fit, type = "ppc")
+plot(fit, type = "pp_check")
 ```
 
 ## Summary Table of Functions
 
 | Function | Purpose | Phase |
 |:---|:---|:---|
-| [`dpmirt_simulate()`](https://joonho112.github.io/DPMirt/reference/dpmirt_simulate.md) | Generate IRT data with target reliability | Simulation |
+| [`dpmirt_simulate()`](https://joonho112.github.io/DPMirt/reference/dpmirt_simulate.md) | Generate IRT data; target reliability for Rasch/2PL when IRTsimrel is available | Simulation |
 | [`dpmirt()`](https://joonho112.github.io/DPMirt/reference/dpmirt.md) | Fit model (one-step) | Fitting |
 | [`dpmirt_estimates()`](https://joonho112.github.io/DPMirt/reference/dpmirt_estimates.md) | Compute PM, CB, GR estimates | Estimation |
 | [`dpmirt_loss()`](https://joonho112.github.io/DPMirt/reference/dpmirt_loss.md) | Evaluate MSEL, MSELR, KS | Evaluation |
-| [`dpmirt_draws()`](https://joonho112.github.io/DPMirt/reference/dpmirt_draws.md) | Extract raw posterior samples | Post-hoc analysis |
+| [`dpmirt_draws()`](https://joonho112.github.io/DPMirt/reference/dpmirt_draws.md) | Extract retained rescaled posterior draws | Post-hoc analysis |
 | [`dpmirt_dp_density()`](https://joonho112.github.io/DPMirt/reference/dpmirt_dp_density.md) | Compute DP mixture density | DPM diagnostics |
 
 ## What’s Next?
 
 | Vignette | Why read it |
 |:---|:---|
-| *Quick Start* | Simpler walkthrough of the basic pipeline |
-| *Prior Elicitation* | Principled $`\alpha`$ choice via DPprior |
-| *Under the Hood* | NIMBLE internals, compile-once pattern, custom samplers |
+| [Quick Start](https://joonho112.github.io/DPMirt/articles/quick-start.md) | Simpler walkthrough of the basic pipeline |
+| [Prior Elicitation](https://joonho112.github.io/DPMirt/articles/prior-elicitation.md) | Optional DPprior calibration of $`\alpha`$ and Gamma(1,3) fallback |
+| [NIMBLE Internals](https://joonho112.github.io/DPMirt/articles/nimble-internals.md) | NIMBLE internals, live compile-once pattern, custom sampler hooks |
 
 ## References
 

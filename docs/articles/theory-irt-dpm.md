@@ -30,7 +30,10 @@ estimators to the semiparametric IRT setting.
 > **Note:** This vignette contains no live MCMC computation. All code
 > blocks show model specifications and mathematical formulas for
 > reference. For applied examples with actual model fitting, see the
-> companion vignettes `models-and-workflow` and `posterior-summaries`.
+> companion vignettes [Models and
+> Workflow](https://joonho112.github.io/DPMirt/articles/models-and-workflow.md)
+> and [Posterior
+> Summaries](https://joonho112.github.io/DPMirt/articles/posterior-summaries.md).
 
 ## 2. The Bayesian Rasch Model
 
@@ -76,16 +79,20 @@ for (j in 1:N) {
 
 ### 2.2 Sufficient Statistics
 
-A fundamental property of the Rasch model is that the total score
-$`r_p = \sum_{i=1}^{I} y_{ip}`$ is a **sufficient statistic** for
-$`\theta_p`$. The joint likelihood factorizes as:
+A fundamental property of the Rasch likelihood is that, conditional on
+the item difficulties, the total score $`r_p = \sum_{i=1}^{I} y_{ip}`$
+is a **sufficient statistic** for $`\theta_p`$. The conditional
+likelihood factorizes as:
 ``` math
 P(\mathbf{y}_p \mid \theta_p, \boldsymbol{\beta}) =
 \frac{\exp\left(r_p \theta_p - \sum_i y_{ip} \beta_i\right)}
      {\prod_{i=1}^{I} \left(1 + \exp(\theta_p - \beta_i)\right)},
 ```
-which, by the Neyman-Fisher factorization theorem, establishes that the
-posterior for $`\theta_p`$ depends on the data only through $`r_p`$.
+which, by the Neyman-Fisher factorization theorem, establishes the
+conditional sufficiency result. In the full Bayesian hierarchical model,
+the joint posterior also learns item and population parameters, so this
+statement should be read as a property of the Rasch likelihood rather
+than as a claim about every joint posterior marginal.
 
 > **Key insight:** The Rasch model is the *only* standard unidimensional
 > IRT model with this sufficiency property. Two persons with the same
@@ -107,8 +114,11 @@ where $`\pi_{ip}`$ is defined by the Rasch IRF above.
 $`\theta_p \stackrel{iid}{\sim} G`$ and item difficulties from
 $`\beta_i \stackrel{iid}{\sim} \text{N}(\mu_\beta, \sigma^2_\beta)`$.
 The choice of $`G`$ is where the two approaches diverge: under the
-parametric prior $`G = \text{N}(\mu_\theta, \sigma^2_\theta)`$, and
-under the DPM prior $`G \sim \text{DP}(\alpha, G_0)`$ (Section 5).
+parametric prior $`G = \text{N}(\mu_\theta, \sigma^2_\theta)`$. Under
+the DPM prior, a mixing measure $`H \sim \text{DP}(\alpha, H_0)`$ is
+placed on Normal-kernel parameters $`(\mu, \sigma^2)`$, inducing a
+continuous Normal mixture distribution $`G_H`$ for abilities (Section
+5).
 
 **Level 3 (Hyperpriors):** For the Normal prior,
 $`\mu_\theta \sim \text{N}(0, 3)`$ and
@@ -287,8 +297,11 @@ informative prior for the lower asymptote (De Ayala, 2022).
 ### 4.1 The Identification Problem
 
 IRT models contain **identification indeterminacy**: certain
-transformations of the parameters leave the likelihood invariant.
-Without constraints, the posterior is improper along these directions.
+transformations of the parameters leave the likelihood invariant. Proper
+priors can make the posterior proper, but the latent measurement scale
+remains arbitrary or prior-anchored. DPMirt therefore uses in-model
+constraints or post-hoc rescaling to put parameters on an interpretable
+scale.
 
 **Rasch model (location indeterminacy):** For any constant $`c`$, the
 transformation $`\theta_p \mapsto \theta_p + c`$,
@@ -311,7 +324,10 @@ parameters and the efficiency of MCMC sampling.
 
 DPMirt supports three identification strategies, selected via the
 `identification` argument to
-[`dpmirt_spec()`](https://joonho112.github.io/DPMirt/reference/dpmirt_spec.md):
+[`dpmirt_spec()`](https://joonho112.github.io/DPMirt/reference/dpmirt_spec.md).
+Not every strategy is available for every model-prior combination: DPM
+priors reject `constrained_ability`, and 3PL currently rejects
+`constrained_item`.
 
 **Strategy 1: `constrained_ability`** – Fix
 $`\theta \sim \text{N}(0, 1)`$. Resolves both location and scale
@@ -324,16 +340,17 @@ For Rasch:
 \beta_i^* = \beta_i^{\text{tmp}} - \frac{1}{I}\sum_{j=1}^{I} \beta_j^{\text{tmp}}.
 ```
 
-For 2PL/3PL, both $`\beta`$ (or $`\gamma`$) and $`\log(\lambda)`$ are
+For 2PL, both $`\beta`$ (or $`\gamma`$) and $`\log(\lambda)`$ are
 centered:
 ``` math
 \beta_i^* = \beta_i^{\text{tmp}} - \bar{\beta}^{\text{tmp}}, \quad
 \log(\lambda_i^*) = \log(\lambda_i^{\text{tmp}}) - \overline{\log \lambda}^{\text{tmp}}.
 ```
 
-This approach identifies the model within the MCMC without constraining
-the ability distribution, making it compatible with both Normal and DPM
-priors.
+This approach identifies Rasch and 2PL models within the MCMC without
+constraining the ability distribution, making it compatible with both
+Normal and DPM priors. It is not currently implemented for 3PL in
+DPMirt.
 
 **Strategy 3: `unconstrained`** – Place no identification constraints
 during MCMC. Instead, apply post-hoc rescaling to the posterior samples
@@ -447,8 +464,12 @@ trait distributions.
 
 ### 5.3 DPM-IRT Model Specification
 
-The DPM-IRT model replaces the parametric Normal prior with a DP
-Mixture. The measurement model is unchanged; the DPM prior specifies:
+The DPM-IRT model replaces the parametric Normal prior with a DP mixture
+of Normal kernels. The measurement model is unchanged. A mixing measure
+$`H \sim \text{DP}(\alpha, H_0)`$ is placed on kernel parameters
+$`(\mu, \sigma^2)`$, and the induced ability distribution is
+$`G_H(\theta) = \int \text{N}(\theta \mid \mu, \sigma^2)\,dH(\mu,\sigma^2)`$.
+Conditionally, the DPM prior specifies:
 ``` math
 \theta_p \mid z_p, \tilde{\boldsymbol{\mu}}, \tilde{\boldsymbol{\sigma}}^2
 \sim \text{N}(\tilde{\mu}_{z_p}, \tilde{\sigma}^2_{z_p}),
@@ -461,9 +482,9 @@ $`p`$.
 \mathbf{z} = (z_1, \ldots, z_N) \sim \text{CRP}(\alpha, N).
 ```
 
-**Base measure for cluster parameters:**
+**Base measure for kernel parameters:**
 ``` math
-G_0 = \text{N}(0, \sigma^2_\mu) \times \text{Inv-Gamma}(\nu_1, \nu_2),
+H_0 = \text{N}(0, \sigma^2_\mu) \times \text{Inv-Gamma}(\nu_1, \nu_2),
 ```
 meaning that for each cluster $`m`$:
 ``` math
@@ -476,9 +497,10 @@ meaning that for each cluster $`m`$:
 \sigma^2_\mu = 2, \quad \nu_1 = 2.01, \quad \nu_2 = 1.01.
 ```
 
-These values place the cluster variance prior just above the boundary
-for finite mean ($`\nu_1 > 2`$) with
-$`\mathbb{E}[\tilde{\sigma}^2] \approx 1`$.
+These values give
+$`\mathbb{E}[\tilde{\sigma}^2] = \nu_2 / (\nu_1 - 1) \approx 1`$ and
+place the inverse-gamma prior just above the finite-variance boundary,
+yielding a heavy-tailed cluster variance prior.
 
 In NIMBLE, the DPM prior is implemented via the CRP representation:
 
@@ -507,17 +529,19 @@ for (m in 1:M) {
 ### 5.4 Stick-Breaking vs. CRP
 
 An alternative to the CRP is Sethuraman’s (1994) **stick-breaking**
-construction, which represents $`G`$ as an infinite discrete measure:
+construction, which represents the mixing measure $`H`$ as an infinite
+discrete measure:
 ``` math
-G = \sum_{h=1}^{\infty} w_h \delta_{\theta^*_h}, \quad
+H = \sum_{h=1}^{\infty} w_h \delta_{(\mu^*_h,\sigma^{2*}_h)}, \quad
 w_h = v_h \prod_{\ell < h}(1 - v_\ell), \quad
 v_h \stackrel{iid}{\sim} \text{Beta}(1, \alpha),
 ```
-where $`\{\theta^*_h\} \stackrel{iid}{\sim} G_0`$. DPMirt uses the **CRP
-representation** instead, because it is natively supported by NIMBLE’s
-`dCRP` distribution and offers direct access to cluster assignments
-$`z_p`$ without requiring explicit truncation of the number of
-components.
+where $`\{(\mu^*_h,\sigma^{2*}_h)\} \stackrel{iid}{\sim} H_0`$. DPMirt
+uses the **CRP representation** instead, because it is natively
+supported by NIMBLE’s `dCRP` distribution and offers direct access to
+cluster assignments $`z_p`$ without requiring explicit truncation of the
+number of occupied components. The induced ability density is continuous
+because each occupied atom indexes a Normal kernel.
 
 ### 5.5 Practical Truncation
 
@@ -575,7 +599,11 @@ spec <- dpmirt_spec(data, model = "rasch", prior = "dpm",
                     alpha_prior = alpha_ab)
 ```
 
-If DPprior is not installed, DPMirt falls back to Gamma(1, 3).
+If DPprior is not installed, DPMirt falls back to Gamma(1, 3). In the
+one-step
+[`dpmirt()`](https://joonho112.github.io/DPMirt/reference/dpmirt.md)
+interface, DPprior elicitation is requested by setting `mu_K`; otherwise
+the conservative Gamma(1, 3) default is used for DPM models.
 
 > **Key insight:** The $`\alpha`$ hyperprior meaningfully impacts
 > inference for moderate sample sizes. Confirmatory applications benefit
@@ -629,9 +657,12 @@ true ability distribution.
 
 > **Key insight:** The PM estimator is optimal for Goal 1 but performs
 > poorly on Goals 2 and 3 due to shrinkage-induced underdispersion. The
-> CB estimator corrects the underdispersion (Goal 3), and the GR
-> estimator simultaneously addresses ranking and distribution recovery
-> (Goals 2 and 3).
+> CB estimator moment-matches the first two posterior moments and can
+> improve distributional spread, but it is not KS-optimal. The GR
+> estimator combines posterior expected ranks with a posterior-expected
+> EDF/pooled quantile construction to target ranking and distributional
+> goals; finite sample performance should still be checked
+> diagnostically.
 
 ### 7.2 Posterior Mean (PM)
 
@@ -698,10 +729,10 @@ estimates are more dispersed than the posterior means.
 
 ### 7.4 Triple-Goal (GR)
 
-The Triple-Goal estimator, introduced by Shen and Louis (1998),
-simultaneously addresses all three goals: individual estimation,
-ranking, and distribution recovery. It is the most computationally
-intensive of the three methods but provides the most balanced trade-off.
+The Triple-Goal estimator, introduced by Shen and Louis (1998), is
+designed to balance individual estimation, ranking, and distributional
+recovery. It is the most computationally intensive of the three methods
+but provides the most balanced trade-off.
 
 The GR algorithm proceeds in four steps:
 
@@ -776,13 +807,13 @@ theta_gr <- quantile(
 
 The following table summarizes the properties of the three estimators:
 
-| Property                               |    PM     |    CB     |        GR        |
-|:---------------------------------------|:---------:|:---------:|:----------------:|
-| Optimal for individual MSE (Goal 1)    |    Yes    |    No     |        No        |
-| Preserves population variance (Goal 3) |    No     |    Yes    |       Yes        |
-| Preserves ranks (Goal 2)               |  Approx.  |  Approx.  |       Yes        |
-| Closed-form from posterior samples     |    Yes    |    Yes    |       Yes        |
-| Computational cost                     | $`O(SN)`$ | $`O(SN)`$ | $`O(SN \log N)`$ |
+| Property | PM | CB | GR |
+|:---|:--:|:--:|:--:|
+| Optimal for individual MSE (Goal 1) | Yes | No | No |
+| Improves population spread (Goal 3) | No | Moment-matches | EDF/quantile target |
+| Targets posterior expected ranks (Goal 2) | Approx. | Approx. | Yes |
+| Closed-form from posterior samples | Yes | Yes | Yes |
+| Computational cost | $`O(SN)`$ | $`O(SN)`$ | $`O(SN \log N)`$ |
 
 > **Practical guidance:** For educational testing applications where
 > percentile-based interpretations are important (e.g., reporting a
@@ -828,23 +859,32 @@ point:
 DPMirt implements density reconstruction through the
 [`dpmirt_dp_density()`](https://joonho112.github.io/DPMirt/reference/dpmirt_dp_density.md)
 function, following Paganin et al.’s (2023) approach: extract DP
-posterior samples, call NIMBLE’s
+posterior samples, load them into NIMBLE `modelValues` storage through
+public accessors, call
 [`getSamplesDPmeasure()`](https://rdrr.io/pkg/nimble/man/getSamplesDPmeasure.html)
-to obtain stick-breaking weights and atoms, evaluate $`f_s(x)`$ on a
-grid, and apply rescaling.
+to obtain stick-breaking weights and atoms, and evaluate $`f_s(x)`$ on a
+grid.
 
-For unconstrained Rasch models, the rescaling is a location shift
-(Jacobian = 1):
+The current implementation applies the rescaling adjustment for
+unconstrained Rasch models as a location shift (Jacobian = 1):
 ``` math
 f_s^{\text{rescaled}}(x) = f_s(x + \bar{\beta}^{(s)}).
 ```
 
-For 2PL/3PL models, both location and scale adjustments are required:
+For 2PL/3PL IRT and SI parameterizations, full transformed-scale density
+reconstruction would also require scale and Jacobian adjustments:
 ``` math
-f_s^{\text{rescaled}}(x) = d^{(s)} \cdot f_s(d^{(s)} x + c^{(s)}),
+f_{s,\text{IRT}}^{\text{rescaled}}(x) =
+d^{(s)} \cdot f_s(d^{(s)}x + c^{(s)}),
+\qquad
+f_{s,\text{SI}}^{\text{rescaled}}(x) =
+d^{(s)} \cdot f_s(d^{(s)}x - c^{(s)}),
 ```
 where $`c^{(s)}`$ is the location shift and $`d^{(s)}`$ is the scale
-factor.
+factor. DPMirt’s current DP-density helper should therefore be
+interpreted most directly for Rasch/location-shift settings;
+transformed-scale DP density for 2PL/3PL remains a documented
+implementation limitation.
 
 ## 9. Attribution Table
 
@@ -942,15 +982,18 @@ Measurement*. MESA Press.
 This vignette covered the mathematical foundations. For practical
 guidance on using these models and methods, see:
 
-- **[`vignette("models-and-workflow", package = "DPMirt")`](https://joonho112.github.io/DPMirt/articles/models-and-workflow.md)**
+- [Models and
+  Workflow](https://joonho112.github.io/DPMirt/articles/models-and-workflow.md)
   – Step-by-step guide to fitting Rasch, 2PL, and 3PL models with both
   Normal and DPM priors. Covers the compile-once, sample-many workflow.
 
-- **[`vignette("posterior-summaries", package = "DPMirt")`](https://joonho112.github.io/DPMirt/articles/posterior-summaries.md)**
+- [Posterior
+  Summaries](https://joonho112.github.io/DPMirt/articles/posterior-summaries.md)
   – Practical comparison of PM, CB, and GR estimators with real data
   examples. Demonstrates when each estimator is preferred.
 
-- **[`vignette("nimble-internals", package = "DPMirt")`](https://joonho112.github.io/DPMirt/articles/nimble-internals.md)**
+- [NIMBLE
+  Internals](https://joonho112.github.io/DPMirt/articles/nimble-internals.md)
   – Under-the-hood details of NIMBLE integration, custom samplers, and
   the
   [`getSamplesDPmeasure()`](https://rdrr.io/pkg/nimble/man/getSamplesDPmeasure.html)

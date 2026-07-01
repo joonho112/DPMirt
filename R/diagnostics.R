@@ -7,17 +7,27 @@
 #' Compute MCMC Diagnostics for a DPMirt Fit
 #'
 #' Returns a structured list of diagnostic information including effective
-#' sample sizes (ESS), WAIC, log-likelihood trace, timing, and
-#' DPM-specific cluster diagnostics (number of clusters, alpha posterior).
+#' sample sizes (ESS), optional chain-aware R-hat, WAIC, log-likelihood trace,
+#' timing, and DPM-specific cluster diagnostics (number of clusters, alpha
+#' posterior).
 #'
 #' @param fit A \code{dpmirt_fit} object from \code{\link{dpmirt}}.
 #'
 #' @return A \code{dpmirt_diagnostics} S3 object containing:
 #' \describe{
 #'   \item{ess}{List of ESS vectors for items and persons.}
+#'   \item{ess_by_chain}{Per-chain ESS data frames when chain metadata exists.}
+#'   \item{ess_min_items, ess_min_theta}{Minimum finite item/person ESS.}
+#'   \item{rhat}{R-hat vectors by parameter family when computable.}
+#'   \item{rhat_max}{Maximum finite R-hat value, or \code{NA}.}
 #'   \item{waic}{WAIC value (if computed).}
+#'   \item{waic_by_chain}{Per-chain WAIC provenance when available.}
+#'   \item{waic_aggregation}{How top-level WAIC was aggregated.}
 #'   \item{loglik_trace}{Log-likelihood trace vector.}
+#'   \item{loglik_by_chain}{Log-likelihood trace with chain metadata.}
+#'   \item{chain_info}{Stored chain/run metadata when available.}
 #'   \item{n_clusters}{Posterior cluster counts (DPM only).}
+#'   \item{n_clusters_summary}{Summary of posterior cluster counts (DPM only).}
 #'   \item{alpha_summary}{Alpha posterior summary (DPM only).}
 #'   \item{compilation_time, sampling_time, total_time}{Timing information.}
 #' }
@@ -25,9 +35,12 @@
 #' @details
 #' Effective sample size (ESS) measures the number of effectively independent
 #' draws from the posterior. Low ESS (< 100) suggests poor mixing and the
-#' need for longer chains or different samplers. For DPM models, the cluster
-#' count trace is a key diagnostic — stable oscillation indicates convergence,
-#' while monotonic trends suggest the chain has not yet mixed.
+#' need for longer chains or different samplers. R-hat is reported only when
+#' \code{draw_index} contains at least two labeled chains with retained draws.
+#' Sequential resume segments are tracked in \code{run_history} but are not
+#' treated as independent chains. For DPM models, the cluster count trace is a
+#' first-pass visual check: stable oscillation is reassuring, while monotonic
+#' trends suggest the run has not yet mixed.
 #'
 #' @examples
 #' \dontrun{
@@ -49,26 +62,44 @@ dpmirt_diagnostics <- function(fit) {
     stop("Input must be a dpmirt_fit object.", call. = FALSE)
   }
 
+  chain_diag <- fit$diagnostics
   diag <- list()
 
   # --- ESS ---
   diag$ess <- fit$ess
-  diag$ess_min_items <- if (!is.null(fit$ess$items)) {
-    min(fit$ess$items, na.rm = TRUE)
+  diag$ess_by_chain <- if (!is.null(chain_diag$ess$by_chain)) {
+    chain_diag$ess$by_chain
   } else {
-    NA
+    NULL
   }
-  diag$ess_min_theta <- if (!is.null(fit$ess$theta)) {
-    min(fit$ess$theta, na.rm = TRUE)
-  } else {
-    NA
-  }
+  diag$ess_min_items <- .min_finite_or_na(fit$ess$items)
+  diag$ess_min_theta <- .min_finite_or_na(fit$ess$theta)
+
+  # --- R-hat ---
+  diag$rhat <- if (!is.null(chain_diag$rhat)) chain_diag$rhat else NULL
+  diag$rhat_max <- .max_rhat_or_na(diag$rhat)
 
   # --- WAIC ---
   diag$waic <- fit$waic
+  diag$waic_by_chain <- if (!is.null(chain_diag$waic$by_chain)) {
+    chain_diag$waic$by_chain
+  } else {
+    NULL
+  }
+  diag$waic_aggregation <- if (!is.null(chain_diag$waic$aggregation)) {
+    chain_diag$waic$aggregation
+  } else {
+    NULL
+  }
 
   # --- Log-likelihood trace ---
   diag$loglik_trace <- fit$loglik_trace
+  diag$loglik_by_chain <- if (!is.null(chain_diag$loglik$by_chain)) {
+    chain_diag$loglik$by_chain
+  } else {
+    NULL
+  }
+  diag$chain_info <- fit$chain_info
 
   # --- DPM-specific diagnostics ---
   if (fit$config$prior == "dpm") {
@@ -91,6 +122,43 @@ dpmirt_diagnostics <- function(fit) {
 
   class(diag) <- "dpmirt_diagnostics"
   diag
+}
+
+
+.min_finite_or_na <- function(x) {
+  if (is.null(x) || length(x) == 0L) {
+    return(NA_real_)
+  }
+  x <- as.numeric(x)
+  x <- x[is.finite(x)]
+  if (length(x) == 0L) {
+    NA_real_
+  } else {
+    min(x)
+  }
+}
+
+
+.max_rhat_or_na <- function(rhat) {
+  if (is.null(rhat) || length(rhat) == 0L) {
+    return(NA_real_)
+  }
+  vals <- unlist(rhat, use.names = FALSE)
+  vals <- as.numeric(vals)
+  vals <- vals[is.finite(vals)]
+  if (length(vals) == 0L) {
+    NA_real_
+  } else {
+    max(vals)
+  }
+}
+
+
+.format_diag_time <- function(seconds) {
+  if (is.null(seconds) || length(seconds) == 0L || !is.finite(seconds[[1]])) {
+    return("not available")
+  }
+  .format_time(seconds[[1]])
 }
 
 
@@ -130,11 +198,16 @@ print.dpmirt_diagnostics <- function(x, ...) {
 
   # ESS
   cat("Effective Sample Size (ESS):\n")
-  cat("  Min ESS (items): ", round(x$ess_min_items, 1), "\n")
-  cat("  Min ESS (theta): ", round(x$ess_min_theta, 1), "\n")
+  cat("  Min ESS (items): ", .format_diag_number(x$ess_min_items), "\n")
+  cat("  Min ESS (theta): ", .format_diag_number(x$ess_min_theta), "\n")
+
+  if (!is.null(x$rhat) && is.finite(x$rhat_max)) {
+    cat("\nR-hat:\n")
+    cat("  Max R-hat:       ", round(x$rhat_max, 3), "\n")
+  }
 
   # WAIC
-  if (!is.null(x$waic)) {
+  if (!is.null(x$waic) && length(x$waic) > 0L && is.finite(x$waic[[1]])) {
     cat("\nWAIC: ", round(x$waic, 2), "\n")
   }
 
@@ -160,19 +233,38 @@ print.dpmirt_diagnostics <- function(x, ...) {
 
   # Timing
   cat("\nTiming:\n")
-  cat("  Compilation: ", .format_time(x$compilation_time), "\n")
-  cat("  Sampling:    ", .format_time(x$sampling_time), "\n")
-  cat("  Total:       ", .format_time(x$total_time), "\n")
+  cat("  Compilation: ", .format_diag_time(x$compilation_time), "\n")
+  cat("  Sampling:    ", .format_diag_time(x$sampling_time), "\n")
+  cat("  Total:       ", .format_diag_time(x$total_time), "\n")
 
   invisible(x)
+}
+
+
+.format_diag_number <- function(x) {
+  if (is.null(x) || length(x) == 0L || !is.finite(x[[1]])) {
+    "not available"
+  } else {
+    as.character(round(x[[1]], 1))
+  }
 }
 
 
 #' Compare DPMirt models using information criteria
 #'
 #' @param ... Two or more \code{dpmirt_fit} objects.
-#' @param criterion Character. Comparison criterion. Default "waic".
-#' @return A data.frame ranking models by the criterion.
+#' @param criterion Character. Comparison criterion. Currently only
+#'   \code{"waic"} is supported.
+#' @return A data.frame ranking models by the criterion with columns
+#'   \code{model}, \code{waic}, \code{delta_waic}, and
+#'   \code{waic_aggregation}. Fits with unavailable WAIC are kept in the
+#'   table with \code{NA} deltas; all-missing WAIC values raise an error.
+#'
+#' @details
+#' For chain-labeled multi-run fits, \code{waic_aggregation} records whether
+#' the top-level WAIC is a mean of per-run WAIC values. Such values are
+#' retained for provenance and backward compatibility but should not be
+#' interpreted as pooled posterior WAIC.
 #'
 #' @examples
 #' \dontrun{
@@ -194,6 +286,10 @@ print.dpmirt_diagnostics <- function(x, ...) {
 dpmirt_compare <- function(..., criterion = "waic") {
   fits <- list(...)
 
+  if (length(fits) < 2L) {
+    stop("At least two dpmirt_fit objects are required.", call. = FALSE)
+  }
+
   # Validate
   for (i in seq_along(fits)) {
     if (!inherits(fits[[i]], "dpmirt_fit")) {
@@ -206,24 +302,75 @@ dpmirt_compare <- function(..., criterion = "waic") {
   }
 
   # Extract WAIC values
-  waic_vals <- sapply(fits, function(f) {
-    if (!is.null(f$waic)) f$waic else NA
-  })
+  waic_vals <- vapply(fits, function(f) {
+    .normalize_fit_waic(f$waic)
+  }, numeric(1), USE.NAMES = FALSE)
+
+  if (all(is.na(waic_vals))) {
+    stop(
+      "No comparable WAIC values are available. Refit with compute_waic = TRUE ",
+      "or compare fits with another validated criterion.",
+      call. = FALSE
+    )
+  }
+
+  if (any(is.na(waic_vals))) {
+    warning(
+      "Some fits have unavailable WAIC and will not receive a finite ",
+      "delta_waic.",
+      call. = FALSE
+    )
+  }
+
+  waic_aggregation <- vapply(fits, function(f) {
+    agg <- NULL
+    if (!is.null(f$diagnostics) && !is.null(f$diagnostics$waic)) {
+      agg <- f$diagnostics$waic$aggregation
+    }
+    if (is.null(agg) && !is.null(f$chain_info) && nrow(f$chain_info) > 1L) {
+      agg <- "mean_of_chain_waic"
+    }
+    if (is.null(agg)) NA_character_ else as.character(agg[[1]])
+  }, character(1), USE.NAMES = FALSE)
+
+  if (any(waic_aggregation == "mean_of_chain_waic", na.rm = TRUE)) {
+    warning(
+      "At least one fit uses mean-of-run WAIC provenance. This is not a ",
+      "pooled posterior WAIC; interpret model ranking cautiously.",
+      call. = FALSE
+    )
+  }
+
+  delta_waic <- rep(NA_real_, length(waic_vals))
+  finite_waic <- is.finite(waic_vals)
+  delta_waic[finite_waic] <- waic_vals[finite_waic] -
+    min(waic_vals[finite_waic])
 
   # Build model labels
-  labels <- sapply(fits, function(f) {
+  labels <- vapply(fits, function(f) {
     paste0(toupper(f$config$model), "-", f$config$prior)
-  })
+  }, character(1), USE.NAMES = FALSE)
 
   result <- data.frame(
     model = labels,
     waic  = waic_vals,
+    delta_waic = delta_waic,
+    waic_aggregation = waic_aggregation,
     stringsAsFactors = FALSE
   )
-  result <- result[order(result$waic), ]
-  result$delta_waic <- result$waic - min(result$waic, na.rm = TRUE)
+  result <- result[order(is.na(result$waic), result$waic), ]
+  rownames(result) <- NULL
 
   result
+}
+
+
+.normalize_fit_waic <- function(waic) {
+  if (is.null(waic) || length(waic) == 0L) {
+    return(NA_real_)
+  }
+  waic <- suppressWarnings(as.numeric(waic[[1]]))
+  if (!is.finite(waic)) NA_real_ else waic
 }
 
 

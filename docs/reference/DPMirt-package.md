@@ -15,7 +15,7 @@ The DPMirt package supports:
 
 - Two latent trait priors: parametric (Normal) and semiparametric (DPM)
 
-- Three identification strategies: constrained_item,
+- Three identification strategies where compatible: constrained_item,
   constrained_ability, unconstrained
 
 - Three posterior summary methods: PM, CB (Ghosh 1992), GR (Shen & Louis
@@ -23,9 +23,12 @@ The DPMirt package supports:
 
 - Compile-once, sample-many MCMC workflow
 
-- Principled alpha hyperprior elicitation via DPprior
+- Optional alpha hyperprior elicitation via DPprior, with Gamma(1, 3)
+  fallback
 
-- Reliability-targeted simulation via IRTsimrel
+- Rasch/2PL reliability-targeted simulation when IRTsimrel is installed;
+  fallback simulation otherwise, including 3PL without reliability
+  targeting
 
 The backbone NIMBLE model code is adapted from Paganin et al. (2023).
 MCMC compilation, sampling, and model management are handled by NIMBLE's
@@ -61,7 +64,7 @@ A standard DPMirt analysis proceeds in five steps:
     [`dpmirt_compare`](https://joonho112.github.io/DPMirt/reference/dpmirt_compare.md).
 
 5.  **Visualize**: Use
-    [`plot`](https://joonho112.github.io/DPMirt/reference/plot.dpmirt_fit.md)
+    [`plot(fit)`](https://joonho112.github.io/DPMirt/reference/plot.dpmirt_fit.md)
     and the `dpmirt_plot_*` family for publication-quality figures.
 
 ## Model Fitting
@@ -105,11 +108,12 @@ A standard DPMirt analysis proceeds in five steps:
 
 - [`dpmirt_diagnostics`](https://joonho112.github.io/DPMirt/reference/dpmirt_diagnostics.md):
 
-  MCMC convergence diagnostics (ESS, Rhat, trace summaries)
+  MCMC convergence diagnostics (ESS, optional chain-aware R-hat, trace
+  summaries, and WAIC provenance)
 
 - [`dpmirt_compare`](https://joonho112.github.io/DPMirt/reference/dpmirt_compare.md):
 
-  WAIC-based model comparison
+  WAIC-based model comparison with aggregation provenance
 
 ## Simulation
 
@@ -132,7 +136,8 @@ A standard DPMirt analysis proceeds in five steps:
 
 - [`dpmirt_dp_density`](https://joonho112.github.io/DPMirt/reference/dpmirt_dp_density.md):
 
-  Posterior density estimation from the Dirichlet Process mixture
+  Posterior density estimation from the Dirichlet Process mixture, most
+  directly interpretable for Rasch/location-shift settings
 
 ## Visualization
 
@@ -144,11 +149,12 @@ S3 plot methods:
 
 - [`plot(estimates)`](https://joonho112.github.io/DPMirt/reference/plot.dpmirt_estimates.md):
 
-  Shrinkage, rank, and comparison plots for PM/CB/GR estimates
+  Caterpillar plots of PM/CB/GR estimates and PM-vs-CB shrinkage plots
 
 - [`plot(sim)`](https://joonho112.github.io/DPMirt/reference/plot.dpmirt_sim.md):
 
-  ICC and distribution plots for simulated data
+  True-parameter histograms and response-matrix heatmaps for simulated
+  data
 
 Standalone ggplot2 functions (require ggplot2):
 [`dpmirt_plot_trace`](https://joonho112.github.io/DPMirt/reference/dpmirt_plot_trace.md),
@@ -182,6 +188,8 @@ B, 60*(2), 455–471.
 
 Useful links:
 
+- <https://joonho112.github.io/DPMirt/>
+
 - <https://github.com/joonho112/DPMirt>
 
 - Report bugs at <https://github.com/joonho112/DPMirt/issues>
@@ -189,3 +197,7 @@ Useful links:
 ## Author
 
 **Maintainer**: JoonHo Lee <jlee296@ua.edu>
+
+Authors:
+
+- JoonHo Lee <jlee296@ua.edu>

@@ -16,10 +16,10 @@ methods — PM, CB, and GR — designed for different inferential goals.
 | **Three IRT models** | Rasch, 2PL, and 3PL |
 | **Two latent priors** | Parametric (Normal) and semiparametric (DPM) |
 | **Triple-goal estimation** | Posterior Mean (PM), Constrained Bayes (CB; Ghosh 1992), Triple-Goal (GR; Shen & Louis 1998) |
-| **Compile-once workflow** | Compile the NIMBLE model once, then draw additional samples without recompilation |
-| **Principled prior elicitation** | Automatic concentration-parameter selection via [DPprior](https://github.com/joonho112/DPprior) |
-| **Reliability-targeted simulation** | Generate test data at a specified marginal reliability via [IRTsimrel](https://github.com/joonho112/IRTsimrel) |
-| **Rich diagnostics** | ESS, R-hat, WAIC, posterior predictive checks, trace and density plots |
+| **Compile-once workflow** | Compile the NIMBLE model once, then draw additional sequential samples while the compiled object is live |
+| **Principled prior elicitation** | Optional concentration-parameter calibration via [DPprior](https://github.com/joonho112/DPprior), with a Gamma(1, 3) fallback |
+| **Reliability-targeted simulation** | Generate Rasch/2PL test data at a specified marginal reliability via [IRTsimrel](https://github.com/joonho112/IRTsimrel); 3PL uses DPMirt’s fallback simulator and does not target reliability |
+| **Rich diagnostics** | ESS, optional chain-aware R-hat, WAIC provenance, posterior predictive checks, trace and density plots |
 
 ## Installation
 
@@ -37,6 +37,11 @@ guide](https://r-nimble.org/download) if you do not already have one set
 up.
 
 ### Optional packages
+
+`DPprior` and `IRTsimrel` are optional GitHub packages. DPMirt installs
+and runs without them: without `DPprior`, alpha-prior elicitation falls
+back to `Gamma(1, 3)`; without `IRTsimrel`, simulation uses DPMirt’s
+internal fallback generator without reliability targeting.
 
 ``` r
 
@@ -102,14 +107,21 @@ spec <- dpmirt_spec(sim$response, model = "2pl", prior = "dpm")
 compiled <- dpmirt_compile(spec)
 
 # Sample
-fit <- dpmirt_sample(compiled, niter = 10000, nburnin = 3000)
+samples <- dpmirt_sample(compiled, niter = 10000, nburnin = 3000)
 
 # Rescale (post-hoc identification)
-fit <- dpmirt_rescale(fit)
+fit <- dpmirt_rescale(samples)
 
 # Continue sampling without recompiling
-fit2 <- dpmirt_resume(fit, niter_more = 5000)
+resumed <- dpmirt_resume(fit, niter_more = 5000)
+fit2 <- dpmirt_rescale(resumed)
 ```
+
+Compiled NIMBLE objects contain external pointers and cannot be restored
+from RDS.
+[`dpmirt_resume()`](https://joonho112.github.io/DPMirt/reference/dpmirt_resume.md)
+therefore requires the original live compiled object stored in the
+`dpmirt_samples` or `dpmirt_fit` object.
 
 ## Posterior Summary Methods
 
@@ -134,9 +146,52 @@ est <- dpmirt_estimates(fit, methods = c("pm", "cb", "gr"))
 dpmirt_loss(est, true_theta = sim$theta, metrics = c("msel", "ks"))
 ```
 
+## Diagnostics and Draws
+
+``` r
+
+diag <- dpmirt_diagnostics(fit)
+diag$chain_info
+diag$waic_aggregation
+
+theta_draws <- dpmirt_draws(fit, vars = "theta", format = "long")
+head(theta_draws)
+```
+
+`dpmirt_fit` objects store chain/run provenance through
+`schema_version`, `chain_info`, `draw_index`, and `run_history`. R-hat
+is reported when at least two labeled chains have retained draws;
+single-chain fits and the compact vignette fixtures return `NULL` R-hat
+and should be judged with ESS, trace plots, and substantive diagnostics.
+
+[`dpmirt_draws()`](https://joonho112.github.io/DPMirt/reference/dpmirt_draws.md)
+currently extracts the rescaled posterior draws used by summary and
+plotting methods. Raw, unrescaled draw extraction and disk-backed draw
+storage (`save_draws = FALSE` or `save_path`) are reserved for a future
+release.
+
+## Current Scope Notes
+
+- `sampler_config` supports an advanced function hook with signature
+  `function(conf, model, spec)`. List-based sampler schemas are
+  reserved.
+- `item_priors` is reserved; use `NULL` or
+  [`list()`](https://rdrr.io/r/base/list.html) for DPMirt’s fixed item
+  priors.
+- 3PL models include item guessing parameters (`delta`). Some
+  identification combinations are intentionally unavailable, including
+  `constrained_item` for 3PL and `constrained_ability` for DPM models.
+- 3PL simulation uses DPMirt’s fallback generator with Beta-distributed
+  guessing parameters and does not use `target_rho`.
+- [`dpmirt_dp_density()`](https://joonho112.github.io/DPMirt/reference/dpmirt_dp_density.md)
+  can be computationally expensive because it rebuilds the NIMBLE
+  DP-measure workflow and loads retained DP draws through public
+  `modelValues` accessors; compact vignette fixtures store thinned
+  posterior draws and plot-ready DP-density summaries.
+
 ## Vignettes
 
-DPMirt ships with eight vignettes organised into two reading tracks:
+DPMirt ships with eight source vignettes:
 
 | Vignette | Topic |
 |:---|:---|
