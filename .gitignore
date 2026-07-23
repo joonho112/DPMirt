@@ -32,3 +32,10 @@ tests/testthat/Rplots.pdf
 # Development folder (logs, tests, reference code, benchmarks)
 dev/
 log/
+
+# local debris (V3 hygiene, 2026-07-22)
+.DS_Store
+figure/
+tests/testthat/_problems/
+tests/testthat/testthat-problems.rds
+tests/testthat/Rplots.pdf

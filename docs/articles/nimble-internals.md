@@ -68,14 +68,14 @@ spec <- dpmirt_spec(
 print(spec)
 #> DPMirt Model Specification
 #> ==========================
-#> Model:            RASCH
-#> Prior:            dpm
-#> Identification:   unconstrained
-#> Persons (N):      200
-#> Items (I):        25
-#> Max clusters (M): 50
+#> Model:            RASCH 
+#> Prior:            dpm 
+#> Identification:   unconstrained 
+#> Persons (N):      200 
+#> Items (I):        25 
+#> Max clusters (M): 50 
 #> Alpha prior:      Gamma(1, 3)
-#> Monitors:         beta, alpha, zi, muTilde, s2Tilde, myLogProbAll, myLogProbSome, myLogLik
+#> Monitors:         beta, alpha, zi, muTilde, s2Tilde, myLogProbAll, myLogProbSome, myLogLik 
 #> Monitors2:        eta
 ```
 
@@ -212,7 +212,7 @@ at package load time.
 | logProb_summer | Sampler | Log-probability monitoring: tracks logProb(all), logProb(params), logLik(data) | By default when log-probability monitoring is enabled |
 | sampler_centered | Sampler | Joint adaptive MH for correlated (log_lambda, gamma) in SI parameterization | 2PL/3PL SI with unconstrained or constrained_ability identification |
 
-Custom NIMBLE components registered by DPMirt. {.table}
+Custom NIMBLE components registered by DPMirt.
 
 ### dBernoulliVector
 
@@ -338,7 +338,7 @@ one-step fit, use `dpmirt(..., nchains = k)`.
 | dpmirt_rescale()   | \< 1 sec     | Matrix operations    |
 | dpmirt_estimates() | \< 1 sec     | Quantile computation |
 
-Typical timing for each pipeline stage (Rasch, N=200, I=25). {.table}
+Typical timing for each pipeline stage (Rasch, N=200, I=25).
 
 ### Step-by-Step Workflow
 

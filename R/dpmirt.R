@@ -26,7 +26,13 @@
 #' @param thin Integer. Thinning for main monitors. Default 1.
 #' @param thin2 Integer or NULL. Thinning for eta. NULL = same as thin.
 #' @param nchains Integer. Number of chains. Default 1.
-#' @param seed Integer or NULL. Random seed.
+#' @param seed Integer, integer vector, or NULL. A scalar seeds chain 1 and
+#'   derives the other chains by a documented offset. A vector of length
+#'   \code{nchains} supplies an EXPLICIT per-chain seed for each chain (consumed
+#'   verbatim) — use this to inject externally-derived chain seeds so the seeds
+#'   run are exactly the ones recorded. Seed values must be unique across
+#'   chains. Each resolved chain seed owns both that chain's initial-value
+#'   generation and its sampling stream. NULL leaves chains unseeded.
 #' @param alpha_prior Alpha hyperprior for DPM. NULL (default Gamma(1,3) or
 #'   auto-elicit if \code{mu_K} is set), a numeric vector \code{c(a, b)} for
 #'   Gamma(a, b), or the output of \code{\link{dpmirt_alpha_prior}}.
@@ -138,6 +144,14 @@ dpmirt <- function(data,
 
   total_timer <- .start_timer()
 
+  # W-01 (V3 execution contract, lesson L-11 family): nimble must be ATTACHED,
+  # not merely loaded — nimble's model-building internals resolve exported
+  # helpers (e.g. getNimbleOption) through the search path, so a bare
+  # DPMirt::dpmirt() call in a fresh session otherwise fails at nimbleModel().
+  if (!"package:nimble" %in% search()) {
+    suppressPackageStartupMessages(attachNamespace("nimble"))
+  }
+
   model <- match.arg(model)
   prior <- match.arg(prior)
   parameterization <- match.arg(parameterization)
@@ -154,6 +168,12 @@ dpmirt <- function(data,
   thin <- control$thin
   thin2 <- control$thin2
   nchains <- control$nchains
+
+  # Resolve and collision-check the COMPLETE effective chain-seed set before
+  # specification or NIMBLE compilation. A chain has exactly one seed owner:
+  # the same resolved scalar drives its initial-value generation and sampling.
+  # There is deliberately no independent "fit init" stream.
+  chain_seeds <- .resolve_chain_seeds(seed, nchains)
 
   .vmsg("=== DPMirt: Fitting ", toupper(model), " model with ",
         prior, " prior ===", verbose = verbose)
@@ -201,29 +221,42 @@ dpmirt <- function(data,
   .vmsg("\n[3/4] Running MCMC...", verbose = verbose)
 
   if (nchains == 1) {
+    seed1 <- chain_seeds[[1L]]
     init <- .chain_initial_values(spec, chain_id = 1L,
-                                  seed = seed, nchains = nchains)
+                                  seed = seed1, nchains = 1L)
     samples_obj <- dpmirt_sample(
       compiled = compiled,
       niter    = niter,
       nburnin  = nburnin,
       thin     = thin,
       thin2    = thin2,
-      seed     = seed,
+      seed     = seed1,
       verbose  = verbose,
       inits    = init$inits,
       init_seed = init$init_seed,
       init_strategy = init$init_strategy
     )
-    samples_obj <- .add_chain_metadata(samples_obj, chain_id = 1L, seed = seed)
+    samples_obj <- .add_chain_metadata(samples_obj, chain_id = 1L, seed = seed1)
     all_samples <- list(samples_obj)
   } else {
     # Multiple chains
     all_samples <- vector("list", nchains)
     for (ch in seq_len(nchains)) {
-      ch_seed <- .chain_seed(seed, ch)
-      init <- .chain_initial_values(spec, chain_id = ch,
-                                    seed = seed, nchains = nchains)
+      ch_seed <- chain_seeds[[ch]]
+      # Seeded: chain_id = 1L so the resolved seed is used VERBATIM (identity
+      # under .chain_seed); chain identity is carried by chain metadata below.
+      # Unseeded (ch_seed NULL): keep the pre-refactor multi-chain path
+      # (chain_id = ch, nchains = nchains) so each chain gets an INDEPENDENT
+      # random init — routing NULL through nchains = 1L would hit the
+      # `nchains<=1 && is.null(seed)` early-return and collapse every chain to a
+      # shared compiled-spec start (no between-chain independence for R-hat).
+      init <- if (is.null(ch_seed)) {
+        .chain_initial_values(spec, chain_id = ch, seed = NULL,
+                              nchains = nchains)
+      } else {
+        .chain_initial_values(spec, chain_id = 1L, seed = ch_seed,
+                              nchains = 1L)
+      }
       .vmsg("  Chain ", ch, "/", nchains, "...", verbose = verbose)
       all_samples[[ch]] <- dpmirt_sample(
         compiled = compiled,

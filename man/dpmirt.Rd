@@ -56,7 +56,12 @@ uses model-specific default.}
 
 \item{nchains}{Integer. Number of chains. Default 1.}
 
-\item{seed}{Integer or NULL. Random seed.}
+\item{seed}{Integer, integer vector, or NULL. A scalar seeds chain 1 and
+derives the other chains by a documented offset. A vector of length
+\code{nchains} supplies an explicit, unique per-chain seed for each chain and
+is consumed verbatim. Each resolved chain seed owns both that chain's
+initial-value generation and its sampling stream. NULL leaves chains
+unseeded.}
 
 \item{alpha_prior}{Alpha hyperprior for DPM. NULL (default Gamma(1,3) or
 auto-elicit if \code{mu_K} is set), a numeric vector \code{c(a, b)} for

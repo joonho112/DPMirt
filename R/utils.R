@@ -309,7 +309,97 @@ digest_simple <- function(x) {
     return(NULL)
   }
 
-  as.integer(seed) + as.integer(chain_id) - 1L
+  seed <- .validate_seed_values(seed, arg = "seed")
+  if (length(seed) != 1L) {
+    stop("dpmirt: `.chain_seed()` requires one scalar `seed`.",
+         call. = FALSE)
+  }
+  chain_id_num <- suppressWarnings(as.numeric(chain_id))
+  if (length(chain_id_num) != 1L || is.na(chain_id_num) ||
+      !is.finite(chain_id_num) || chain_id_num != floor(chain_id_num) ||
+      chain_id_num < 1) {
+    stop("dpmirt: `chain_id` must be one positive whole number.",
+         call. = FALSE)
+  }
+
+  # Add in double precision and check the boundary before converting back to
+  # integer. Direct integer addition silently produces NA on overflow.
+  effective <- as.double(seed) + chain_id_num - 1
+  if (effective > .Machine$integer.max) {
+    stop("dpmirt: scalar `seed` plus the chain offset exceeds the maximum ",
+         "supported integer seed (", .Machine$integer.max, ").",
+         call. = FALSE)
+  }
+  as.integer(effective)
+}
+
+
+#' Validate one or more scalar RNG seeds
+#' @noRd
+.validate_seed_values <- function(seed, arg = "seed") {
+  if (is.factor(seed) || is.list(seed) || !is.atomic(seed)) {
+    stop("dpmirt: `", arg, "` must contain whole numeric seed values.",
+         call. = FALSE)
+  }
+  numeric_seed <- suppressWarnings(as.numeric(seed))
+  if (length(numeric_seed) != length(seed) || anyNA(numeric_seed) ||
+      any(!is.finite(numeric_seed)) ||
+      any(numeric_seed != floor(numeric_seed))) {
+    stop("dpmirt: `", arg, "` must contain finite whole numeric seed values.",
+         call. = FALSE)
+  }
+  if (any(numeric_seed < 0) ||
+      any(numeric_seed > .Machine$integer.max)) {
+    stop("dpmirt: `", arg, "` values must be in [0, ",
+         .Machine$integer.max, "].", call. = FALSE)
+  }
+  as.integer(numeric_seed)
+}
+
+
+#' Resolve the per-chain seeds a run will actually consume.
+#'
+#' Two supported forms (W-03 / V3 seed-reconciliation contract, C-09):
+#'   * length-1 (scalar) `seed`  -> derive per-chain seeds by the documented
+#'     offset rule (`.chain_seed`), preserving legacy behaviour.
+#'   * length-`nchains` `seed`   -> an EXPLICIT per-chain seed vector, consumed
+#'     verbatim. This lets V3 inject the four chain seeds it derived from its
+#'     own seed tree, so the seeds the sampler runs are exactly the ones V3
+#'     recorded (no silent re-derivation).
+#' `NULL` yields per-chain NULLs (session-RNG, unseeded). Returns a length-
+#' `nchains` list whose elements are scalar integers (or NULL).
+#' @noRd
+.resolve_chain_seeds <- function(seed, nchains) {
+  nchains_num <- suppressWarnings(as.numeric(nchains))
+  if (length(nchains_num) != 1L || is.na(nchains_num) ||
+      !is.finite(nchains_num) || nchains_num != floor(nchains_num) ||
+      nchains_num < 1 || nchains_num > .Machine$integer.max) {
+    stop("dpmirt: `nchains` must be one positive whole number.",
+         call. = FALSE)
+  }
+  nchains <- as.integer(nchains_num)
+  if (is.null(seed)) {
+    return(rep(list(NULL), nchains))
+  }
+  s <- .validate_seed_values(seed, arg = "seed")
+  if (length(s) == nchains) {
+    if (anyDuplicated(s)) {
+      stop("dpmirt: explicit per-chain `seed` values must be unique; ",
+           "duplicate effective chain seeds are refused.", call. = FALSE)
+    }
+    return(as.list(s))                       # explicit per-chain vector
+  }
+  if (length(s) == 1L) {
+    resolved <- vapply(seq_len(nchains),
+                       function(ch) .chain_seed(s, ch), integer(1))
+    if (anyDuplicated(resolved)) {
+      stop("dpmirt: scalar `seed` derived duplicate effective chain seeds; ",
+           "the run is refused.", call. = FALSE)
+    }
+    return(as.list(resolved))
+  }
+  stop("dpmirt: `seed` must have length 1 or nchains (", nchains,
+       "); got length ", length(s), ".", call. = FALSE)
 }
 
 

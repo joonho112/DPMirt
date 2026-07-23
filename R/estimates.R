@@ -35,6 +35,11 @@
 #' @param include_items Logical. If TRUE, apply requested CB/GR methods to
 #'   beta as well. Theta summaries are always governed by \code{methods}.
 #'   Default TRUE.
+#' @param seed Integer or NULL. If supplied, extraction is deterministic:
+#'   the RNG state is set before any rank tie-breaking (CB/GR consume RNG via
+#'   \code{ties.method = "random"}) and the caller's RNG state is restored on
+#'   exit. If NULL and CB/GR are requested, a once-per-session warning notes
+#'   that results are not bit-reproducible.
 #'
 #' @return A \code{dpmirt_estimates} S3 object with components
 #'   \code{theta}, \code{beta}, \code{lambda}, \code{delta},
@@ -100,13 +105,41 @@ dpmirt_estimates <- function(fit,
                              alpha = 0.05,
                              quantile_type = 7,
                              stop_if_ties = FALSE,
-                             include_items = TRUE) {
+                             include_items = TRUE,
+                             seed = NULL) {
 
   if (!inherits(fit, "dpmirt_fit")) {
     stop("Input must be a dpmirt_fit object.", call. = FALSE)
   }
 
   methods <- match.arg(methods, c("pm", "cb", "gr"), several.ok = TRUE)
+
+  # W-02 (V3 lesson L-06): rank tie-breaking inside .triple_goal() consumes
+  # RNG (ties_method = "random"), so CB/GR estimates are not reproducible
+  # without a seed. An explicit seed makes extraction deterministic; the
+  # caller's RNG state is saved and restored so this remains a pure function
+  # with respect to ambient state.
+  if (!is.null(seed)) {
+    had_seed <- exists(".Random.seed", envir = globalenv(), inherits = FALSE)
+    if (had_seed) {
+      old_rs <- get(".Random.seed", envir = globalenv())
+    }
+    on.exit({
+      if (had_seed) {
+        assign(".Random.seed", old_rs, envir = globalenv())
+      } else if (exists(".Random.seed", envir = globalenv(),
+                        inherits = FALSE)) {
+        rm(".Random.seed", envir = globalenv())
+      }
+    }, add = TRUE)
+    set.seed(seed)
+  } else if (any(c("cb", "gr") %in% methods) &&
+             is.null(.nimble_cache$estimates_seed_warned)) {
+    warning("dpmirt_estimates(): CB/GR rank tie-breaking consumes RNG; ",
+            "pass 'seed' for bit-reproducible estimates. ",
+            "(Shown once per session.)", call. = FALSE)
+    .nimble_cache$estimates_seed_warned <- TRUE
+  }
 
   # --- Person estimates ---
   theta_samp <- fit$theta_samp

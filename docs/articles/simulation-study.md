@@ -57,7 +57,7 @@ degree of posterior shrinkage.
 | 0.70  |      ~23       | Moderate  |    1.5     |
 | 0.90  |      ~61       |   Mild    |    3.0     |
 
-Reliability levels and their implications for IRT estimation. {.table}
+Reliability levels and their implications for IRT estimation.
 
 > **Why reliability dominates:** At $`\bar{w} = 0.50`$, each person’s
 > posterior is heavily shrunk toward the prior, so prior differences are
@@ -93,7 +93,7 @@ stability.
 |    17     | Bimodal | 200 |  0.9  |
 |    18     | Skew    | 200 |  0.9  |
 
-Full 3 x 2 x 3 factorial design (18 conditions). {.table}
+Full 3 x 2 x 3 factorial design (18 conditions).
 
 ### IRTsimrel Integration
 
@@ -118,13 +118,13 @@ sim <- dpmirt_simulate(
 sim
 #> DPMirt Simulated Data
 #> =====================
-#> Model:         RASCH
-#> Persons:       200
-#> Items:         25
-#> Distribution:  bimodal
-#> Method:        irtsimrel
-#> Target rho:    0.8
-#> KR-20:         0.798
+#> Model:         RASCH 
+#> Persons:       200 
+#> Items:         25 
+#> Distribution:  bimodal 
+#> Method:        irtsimrel 
+#> Target rho:    0.8 
+#> KR-20:         0.798 
 #> EQC c*:       0.9356
 #> EQC rho:      0.8
 ```
@@ -425,7 +425,7 @@ knitr::kable(loss_display, row.names = FALSE,
 | Normal-GR | 0.3057 | 0.02439 | 0.060 |
 | Normal-PM | 0.2544 | 0.02460 | 0.095 |
 
-Loss function results: Bimodal, N=200, w-bar=0.8. {.table}
+Loss function results: Bimodal, N=200, w-bar=0.8.
 
 ### Interpreting the Loss Table
 
@@ -551,7 +551,7 @@ move closer together.
 | ρ ≈ 0.8     | GR     | 0.3136 | 0.024868 | 0.055 |
 
 Loss values at two reliability levels. At low reliability the gap
-between PM and GR on KS widens substantially. {.table}
+between PM and GR on KS widens substantially.
 
 > **Key observation.** At $`\bar{w} \approx 0.5`$, the choice of
 > estimator (PM vs. CB vs. GR) matters more than the choice of prior,
@@ -571,7 +571,7 @@ between PM and GR on KS widens substantially. {.table}
 
 Standard deviation of estimates vs. truth. The PM/True ratio quantifies
 shrinkage severity; GR/True shows how well the triple-goal estimator
-recovers the true dispersion. {.table}
+recovers the true dispersion.
 
 > **Pattern.** At low reliability, PM compresses the ability
 > distribution to roughly half its true spread (PM/True

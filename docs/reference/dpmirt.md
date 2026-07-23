@@ -82,7 +82,12 @@ dpmirt(
 
 - seed:
 
-  Integer or NULL. Random seed.
+  Integer, integer vector, or NULL. A scalar seeds chain 1 and derives
+  the other chains by a documented offset. A vector of length `nchains`
+  supplies an explicit, unique per-chain seed for each chain and is
+  consumed verbatim. Each resolved chain seed owns both that chain's
+  initial-value generation and its sampling stream. NULL leaves chains
+  unseeded.
 
 - alpha_prior:
 

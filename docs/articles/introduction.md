@@ -161,7 +161,7 @@ knitr::kable(arch_df, col.names = c("Layer", "Purpose", "Key Functions"),
 | Simulation | Data generation and loss evaluation | dpmirt_simulate(), dpmirt_loss() |
 | Integration | External package interoperability | dpmirt_alpha_prior(), dpmirt_compare() |
 
-DPMirt package architecture {.table}
+DPMirt package architecture
 
 Most users will interact primarily with the **User Interface** layer. A
 single call to
@@ -212,8 +212,7 @@ knitr::kable(goals_df,
 | 2\. Ranking | $`R_p = \text{rank}(\theta_p)`$ | MSELR | Which 5 students need intervention? | Triple-Goal (GR) |
 | 3\. Distribution | $`G_N(t) = N^{-1} \sum I(\theta_p \le t)`$ | ISE / KS | What percentage exceed the cutoff? | Constrained Bayes (CB) / Triple-Goal (GR) |
 
-Three inferential goals for latent trait estimation (Lee & Wind) {.table
-style="width:100%;"}
+Three inferential goals for latent trait estimation (Lee & Wind)
 
 > **Key insight.** No single estimator simultaneously optimizes all
 > three goals. The posterior mean (PM) minimizes individual mean squared
@@ -270,7 +269,7 @@ knitr::kable(model_df,
 | 3PL | Normal | $`\beta_i, \lambda_i, \delta_i`$ | IRT, SI | Unconstrained\*, constrained ability |
 | 3PL | DPM | $`\beta_i, \lambda_i, \delta_i`$ | IRT, SI | Unconstrained\* |
 
-Supported model family (\* = default identification strategy) {.table}
+Supported model family (\* = default identification strategy)
 
 - **Parameterizations.** The IRT form uses
   $`\text{logit}(\pi_{ip}) = \lambda_i (\theta_p - \beta_i)`$; the
@@ -407,7 +406,7 @@ knitr::kable(applied_df, col.names = c("Vignette", "Purpose", "Time"),
 | [Prior Elicitation](https://joonho112.github.io/DPMirt/articles/prior-elicitation.md) | Principled DPM hyperprior selection via DPprior | 20–25 min |
 | [Simulation Study](https://joonho112.github.io/DPMirt/articles/simulation-study.md) | Replicating the evaluation framework from Lee & Wind | 30–40 min |
 
-Applied researchers track {.table}
+Applied researchers track
 
 **Recommended path for new users:** Quick Start $`\rightarrow`$ Models
 and Workflow $`\rightarrow`$ Posterior Summaries. The Prior Elicitation
@@ -434,7 +433,7 @@ knitr::kable(methods_df, col.names = c("Vignette", "Purpose", "Time"),
 | [Mathematical Foundations](https://joonho112.github.io/DPMirt/articles/theory-irt-dpm.md) | IRT model theory, DPM priors, identification, and posterior summary derivations | 45–60 min |
 | [NIMBLE Internals](https://joonho112.github.io/DPMirt/articles/nimble-internals.md) | Custom sampler hooks, compile-once pattern, and advanced NIMBLE configuration | 30–40 min |
 
-Methodological researchers track {.table}
+Methodological researchers track
 
 **Recommended path for methodologists:** Start with Mathematical
 Foundations, then consult NIMBLE Internals. The Applied Track vignettes

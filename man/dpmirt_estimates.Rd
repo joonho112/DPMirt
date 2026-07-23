@@ -10,7 +10,8 @@ dpmirt_estimates(
   alpha = 0.05,
   quantile_type = 7,
   stop_if_ties = FALSE,
-  include_items = TRUE
+  include_items = TRUE,
+  seed = NULL
 )
 
 \method{print}{dpmirt_estimates}(x, ...)
@@ -34,6 +35,12 @@ posterior mean ranks. Default FALSE.}
 \item{include_items}{Logical. If TRUE, apply requested CB/GR methods to
 beta as well. Theta summaries are always governed by \code{methods}.
 Default TRUE.}
+
+\item{seed}{Integer or NULL. If supplied, extraction is deterministic:
+the RNG state is set before any rank tie-breaking (CB/GR consume RNG via
+\code{ties.method = "random"}) and the caller's RNG state is restored on
+exit. If NULL and CB/GR are requested, a once-per-session warning notes
+that results are not bit-reproducible.}
 
 \item{x}{A \code{dpmirt_estimates} object.}
 

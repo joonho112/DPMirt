@@ -78,13 +78,15 @@ print(x, ...)
 
 - latent_params:
 
-  List. Additional parameters passed to `IRTsimrel::sim_latentG()`
+  List. Additional parameters passed to
+  [`IRTsimrel::sim_latentG()`](https://joonho112.github.io/IRTsimrel/reference/sim_latentG.html)
   (e.g., `list(shape_params = list(delta = 0.8))`). If
   `latent_shape = "custom"`, this must include `mixture_spec`.
 
 - item_params:
 
-  List. Additional parameters passed to `IRTsimrel::sim_item_params()`
+  List. Additional parameters passed to
+  [`IRTsimrel::sim_item_params()`](https://joonho112.github.io/IRTsimrel/reference/sim_item_params.html)
   (e.g., `list(discrimination_params = list(rho = -0.3))`).
 
 - M:

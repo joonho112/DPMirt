@@ -20,7 +20,8 @@ dpmirt_estimates(
   alpha = 0.05,
   quantile_type = 7,
   stop_if_ties = FALSE,
-  include_items = TRUE
+  include_items = TRUE,
+  seed = NULL
 )
 
 # S3 method for class 'dpmirt_estimates'
@@ -59,6 +60,14 @@ print(x, ...)
 
   Logical. If TRUE, apply requested CB/GR methods to beta as well. Theta
   summaries are always governed by `methods`. Default TRUE.
+
+- seed:
+
+  Integer or NULL. If supplied, extraction is deterministic: the RNG
+  state is set before any rank tie-breaking (CB/GR consume RNG via
+  `ties.method = "random"`) and the caller's RNG state is restored on
+  exit. If NULL and CB/GR are requested, a once-per-session warning
+  notes that results are not bit-reproducible.
 
 - x:
 

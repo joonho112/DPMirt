@@ -34,7 +34,7 @@ implies and the estimator that minimises it.
 | 2\. Ranking | True rank $`R_p`$ | MSELR: $`\frac{1}{N}\sum(\hat{R}_p/N - R_p/N)^2`$ | Which 5 students need intervention? | Triple-Goal (GR) |
 | 3\. Distribution recovery | True EDF $`G_N(t)`$ | KS: $`\sup_t \lvert\hat{G}_N(t) - G_N(t)\rvert`$ | What proportion scored below the cutoff? | Triple-Goal (GR) |
 
-Three inferential goals and their optimal posterior summaries. {.table}
+Three inferential goals and their optimal posterior summaries.
 
 ### A concrete CBA scenario
 
@@ -465,7 +465,7 @@ knitr::kable(tab10, caption = "Estimates and ranks for the first 10 persons.")
 |      9 |  0.783 | -0.080 | -0.103 | -0.157 |     117 |     117 |
 |     10 | -0.994 | -0.358 | -0.418 | -0.505 |     140 |     140 |
 
-Estimates and ranks for the first 10 persons. {.table}
+Estimates and ranks for the first 10 persons.
 
 ## 8. The Role of Test Reliability
 
@@ -489,7 +489,7 @@ length is:
 | $`\bar{w} \approx 0.90`$ | ~61 items | Mild | Prior choice matters MORE for non-normal G |
 
 Reliability determines whether estimator choice or prior choice has more
-influence on recovery. {.table}
+influence on recovery.
 
 ### Practical implications
 
@@ -610,7 +610,7 @@ comparing the standard deviation of each estimator to the true SD.
 
 Dispersion of estimates relative to truth. At low reliability in this
 fixture, PM retains roughly half of the true SD, while CB and GR recover
-about 70%. {.table}
+about 70%.
 
 > **Reading the table.** The “Ratio” rows reveal the shrinkage severity.
 > At $`\rho \approx 0.5`$, PM compresses the distribution to roughly
@@ -633,7 +633,7 @@ operational goals.
 | Proportion below cutoff | GR | DPM when reliability is moderate/high |
 | Recover full distribution | GR | DPM strongly recommended for non-normal populations |
 
-Quick-reference guide: estimator and prior by goal. {.table}
+Quick-reference guide: estimator and prior by goal.
 
 ### Decision workflow
 
@@ -671,7 +671,7 @@ print(loss)
 | GR     | 0.3136 | 0.024868 | 0.055 |
 
 Loss function results (DPM prior, bimodal population, 25 items,
-rho=0.8). PM wins on MSEL; GR wins on MSELR and KS. {.table}
+rho=0.8). PM wins on MSEL; GR wins on MSELR and KS.
 
 The pattern is typical:
 
@@ -697,7 +697,7 @@ more pronounced:
 
 Loss comparison across reliability levels. At low reliability, estimator
 differences are amplified — especially for KS, where GR achieves a much
-tighter fit than PM. {.table}
+tighter fit than PM.
 
 ### Custom loss functions
 
@@ -780,39 +780,39 @@ This vignette has shown that:
 
     #> R version 4.6.0 (2026-04-24)
     #> Platform: aarch64-apple-darwin23
-    #> Running under: macOS Tahoe 26.2
-    #>
+    #> Running under: macOS Tahoe 26.5.2
+    #> 
     #> Matrix products: default
-    #> BLAS:   /Library/Frameworks/R.framework/Versions/4.6/Resources/lib/libRblas.0.dylib
+    #> BLAS:   /Library/Frameworks/R.framework/Versions/4.6/Resources/lib/libRblas.0.dylib 
     #> LAPACK: /Library/Frameworks/R.framework/Versions/4.6/Resources/lib/libRlapack.dylib;  LAPACK version 3.12.1
-    #>
+    #> 
     #> locale:
-    #> [1] C.UTF-8/C.UTF-8/C.UTF-8/C/C.UTF-8/C.UTF-8
-    #>
+    #> [1] en_US/en_US/en_US/C/en_US/en_US
+    #> 
     #> time zone: America/Chicago
     #> tzcode source: internal
-    #>
+    #> 
     #> attached base packages:
-    #> [1] stats     graphics  grDevices utils     datasets  methods   base
-    #>
+    #> [1] stats     graphics  grDevices utils     datasets  methods   base     
+    #> 
     #> other attached packages:
-    #> [1] ggplot2_4.0.3 DPMirt_0.2.0  nimble_1.4.2
-    #>
+    #> [1] ggplot2_4.0.3 DPMirt_0.2.0  nimble_1.4.2 
+    #> 
     #> loaded via a namespace (and not attached):
-    #>  [1] gtable_0.3.6        jsonlite_2.0.0      dplyr_1.2.1
-    #>  [4] compiler_4.6.0      tidyselect_1.2.1    parallel_4.6.0
-    #>  [7] dichromat_2.0-0.1   jquerylib_0.1.4     systemfonts_1.3.2
-    #> [10] scales_1.4.0        textshaping_1.0.5   yaml_2.3.12
-    #> [13] fastmap_1.2.0       lattice_0.22-9      coda_0.19-4.1
-    #> [16] R6_2.6.1            labeling_0.4.3      generics_0.1.4
-    #> [19] igraph_2.3.1        knitr_1.51          htmlwidgets_1.6.4
-    #> [22] tibble_3.3.1        desc_1.4.3          pillar_1.11.1
-    #> [25] bslib_0.11.0        RColorBrewer_1.1-3  rlang_1.2.0
-    #> [28] cachem_1.1.0        xfun_0.57           S7_0.2.2
-    #> [31] fs_2.1.0            sass_0.4.10         otel_0.2.0
-    #> [34] cli_3.6.6           withr_3.0.2         pkgdown_2.2.0
-    #> [37] magrittr_2.0.5      digest_0.6.39       grid_4.6.0
-    #> [40] lifecycle_1.0.5     vctrs_0.7.3         evaluate_1.0.5
-    #> [43] pracma_2.4.6        glue_1.8.1          farver_2.1.2
-    #> [46] numDeriv_2016.8-1.1 ragg_1.5.2          rmarkdown_2.31
+    #>  [1] gtable_0.3.6        jsonlite_2.0.0      dplyr_1.2.1        
+    #>  [4] compiler_4.6.0      tidyselect_1.2.1    parallel_4.6.0     
+    #>  [7] dichromat_2.0-0.1   jquerylib_0.1.4     systemfonts_1.3.2  
+    #> [10] scales_1.4.0        textshaping_1.0.5   yaml_2.3.12        
+    #> [13] fastmap_1.2.0       lattice_0.22-9      coda_0.19-4.1      
+    #> [16] R6_2.6.1            labeling_0.4.3      generics_0.1.4     
+    #> [19] igraph_2.3.1        knitr_1.51          htmlwidgets_1.6.4  
+    #> [22] tibble_3.3.1        desc_1.4.3          pillar_1.11.1      
+    #> [25] bslib_0.11.0        RColorBrewer_1.1-3  rlang_1.2.0        
+    #> [28] cachem_1.1.0        xfun_0.57           S7_0.2.2           
+    #> [31] fs_2.1.0            sass_0.4.10         otel_0.2.0         
+    #> [34] cli_3.6.6           withr_3.0.2         pkgdown_2.2.0      
+    #> [37] magrittr_2.0.5      digest_0.6.39       grid_4.6.0         
+    #> [40] lifecycle_1.0.5     vctrs_0.7.3         evaluate_1.0.5     
+    #> [43] pracma_2.4.6        glue_1.8.1          farver_2.1.2       
+    #> [46] numDeriv_2016.8-1.1 ragg_1.5.2          rmarkdown_2.31     
     #> [49] tools_4.6.0         pkgconfig_2.0.3     htmltools_0.5.9

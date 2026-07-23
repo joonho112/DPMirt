@@ -74,13 +74,13 @@ simulation with [`print()`](https://rdrr.io/r/base/print.html):
 sim
 #> DPMirt Simulated Data
 #> =====================
-#> Model:         RASCH
-#> Persons:       200
-#> Items:         25
-#> Distribution:  normal
-#> Method:        irtsimrel
-#> Target rho:    0.8
-#> KR-20:         0.786
+#> Model:         RASCH 
+#> Persons:       200 
+#> Items:         25 
+#> Distribution:  normal 
+#> Method:        irtsimrel 
+#> Target rho:    0.8 
+#> KR-20:         0.786 
 #> EQC c*:       0.9059
 #> EQC rho:      0.8
 ```
@@ -136,15 +136,15 @@ overview:
 print(fit)
 #> DPMirt Model Fit
 #> ================
-#> Model:            RASCH
-#> Prior:            normal
-#> Identification:   constrained_item
-#> Persons (N):      200
-#> Items (I):        25
+#> Model:            RASCH 
+#> Prior:            normal 
+#> Identification:   constrained_item 
+#> Persons (N):      200 
+#> Items (I):        25 
 #> MCMC:            10000 iterations (2000 burnin, thin=32)
-#> WAIC:             6079.03
-#> Total time:       55.4 sec
-#> Min ESS (items):  160
+#> WAIC:             6079.03 
+#> Total time:       55.4 sec 
+#> Min ESS (items):  160 
 #> Min ESS (theta):  66
 ```
 
@@ -166,28 +166,28 @@ For a richer view, call
 summary(fit)
 #> DPMirt Model Summary
 #> ====================
-#>
+#> 
 #> Model Configuration:
-#>   Model:            RASCH
-#>   Prior:            normal
-#>   Identification:   constrained_item
-#>   Rescaled:         TRUE
-#>
+#>   Model:            RASCH 
+#>   Prior:            normal 
+#>   Identification:   constrained_item 
+#>   Rescaled:         TRUE 
+#> 
 #> Data:
-#>   Persons (N): 200
-#>   Items (I):   25
-#>
+#>   Persons (N): 200 
+#>   Items (I):   25 
+#> 
 #> MCMC Settings:
-#>   Iterations:  10000
-#>   Burn-in:     2000
-#>   Thinning:    32
-#>   Chains:      1
-#>
+#>   Iterations:  10000 
+#>   Burn-in:     2000 
+#>   Thinning:    32 
+#>   Chains:      1 
+#> 
 #> Timing:
-#>   Compilation:  18.1 sec
-#>   Sampling:     36.6 sec
-#>   Total:        55.4 sec
-#>
+#>   Compilation:  18.1 sec 
+#>   Sampling:     36.6 sec 
+#>   Total:        55.4 sec 
+#> 
 #> Item Difficulty (beta) Summary:
 #>            Mean    SD
 #> beta[1]   0.152 0.155
@@ -215,12 +215,12 @@ summary(fit)
 #> beta[23]  0.650 0.148
 #> beta[24] -0.174 0.146
 #> beta[25] -1.351 0.171
-#>
+#> 
 #> Person Ability (theta) Summary:
 #>   Range: [ -2.077 ,  1.82 ]
-#>   Mean:   -0.073
-#>   SD:     0.808
-#>
+#>   Mean:   -0.073 
+#>   SD:     0.808 
+#> 
 #> Model Comparison:
 #>   WAIC:  6079.03
 ```
@@ -517,6 +517,8 @@ posterior summary methods:
 ``` r
 
 est <- dpmirt_estimates(fit_dpm, methods = c("pm", "cb", "gr"))
+#> Warning: dpmirt_estimates(): CB/GR rank tie-breaking consumes RNG; pass 'seed'
+#> for bit-reproducible estimates. (Shown once per session.)
 ```
 
 The `theta` element is a data frame with one row per person:

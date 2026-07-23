@@ -988,6 +988,11 @@ dpmirt_spec <- function(data,
     } else {
       inits$gamma <- rnorm(I, 0, 1)
       log_lambda <- runif(I, -1, 1)
+      # W-03 (V3 contract): the STOCHASTIC node is log_lambda; supplying only
+      # the deterministic lambda left log_lambda uninitialized, so chain k > 1
+      # on a reused compiled object inherited chain k-1's final state and
+      # bit-equivalence with fresh single-chain runs broke.
+      inits$log_lambda <- log_lambda
       inits$lambda <- exp(log_lambda)
     }
   } else if (is_2pl_or_3pl && parameterization == "irt") {
@@ -998,6 +1003,8 @@ dpmirt_spec <- function(data,
     } else {
       inits$beta <- rnorm(I, 0, 1)
       log_lambda <- runif(I, -1, 1)
+      # W-03: initialize the stochastic node log_lambda directly (see above).
+      inits$log_lambda <- log_lambda
       inits$lambda <- exp(log_lambda)
     }
   } else {

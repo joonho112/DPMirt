@@ -70,47 +70,161 @@
 # the logit link can be computed on the entire vector at once.
 # ============================================================================
 
+# W-01 (V3 lesson L-11): keep authoritative density/simulation definitions as
+# namespace bindings. Registration below mirrors those exact objects into one
+# package-owned attached environment because NIMBLE resolves custom d/r
+# functions by bare name on the search path during model build and compilation.
+
+# Density function (namespace binding)
+dBernoulliVector <- nimbleFunction(
+  run = function(x    = double(1),
+                 prob = double(1),
+                 log  = integer(0, default = 0)) {
+    returnType(double(0))
+    logProb <- sum(dbinom(x, size = 1, prob = prob, log = TRUE))
+    if (log) return(logProb) else return(exp(logProb))
+  }
+)
+
+# Random generation function (namespace binding)
+rBernoulliVector <- nimbleFunction(
+  run = function(n    = integer(0),
+                 prob = double(1)) {
+    returnType(double(1))
+    n <- length(prob)
+    return(rbinom(n, size = 1, prob = prob))
+  }
+)
+
 #' Register dBernoulliVector custom distribution with NIMBLE
 #'
-#' Creates and registers the vectorized Bernoulli distribution functions.
+#' Registers the vectorized Bernoulli distribution and exposes its density /
+#' generation nimbleFunctions in a dedicated package-owned search environment.
 #' Must be called before building a NIMBLE model that uses dBernoulliVector.
 #'
+#' W-01 root cause: NIMBLE resolves a user distribution's `d`/`r`
+#' nimbleFunctions BY NAME up the R search path when it builds an (uncompiled)
+#' model node and again when the C++ compiler infers their signatures — it does
+#' NOT reliably consult a namespace-only binding for that lookup. An
+#' uncompiled `model$calculate()` otherwise fails with "could not find function
+#' dBernoulliVector", and `compileNimble()` fails with "rBernoulliVector is not
+#' available or its output type is unknown". The dedicated environment avoids
+#' writing package internals into `.GlobalEnv`, refuses a same-name environment
+#' owned by anyone else, repairs deleted bindings, and refuses altered ones.
+#'
 #' @noRd
-.register_dBernoulliVector <- function() {
-  if (is.null(.nimble_cache$dBernoulliVector_registered)) {
+.dpmirt_distribution_env_name <- function() {
+  "DPMirt:nimble-distributions"
+}
 
-    # Density function
-    .nimble_cache$dBernoulliVector <- nimbleFunction(
-      run = function(x    = double(1),
-                     prob = double(1),
-                     log  = integer(0, default = 0)) {
-        returnType(double(0))
-        logProb <- sum(dbinom(x, size = 1, prob = prob, log = TRUE))
-        if (log) return(logProb) else return(exp(logProb))
-      }
-    )
+.dpmirt_distribution_owner_binding <- function() {
+  ".DPMirt_namespace_owner"
+}
 
-    # Random generation function
-    .nimble_cache$rBernoulliVector <- nimbleFunction(
-      run = function(n    = integer(0),
-                     prob = double(1)) {
-        returnType(double(1))
-        n <- length(prob)
-        return(rbinom(n, size = 1, prob = prob))
-      }
-    )
-
-    # Register with NIMBLE's distribution system
-    registerDistributions(list(
-      dBernoulliVector = list(
-        BUGSdist = "dBernoulliVector(prob)",
-        types    = c("value = double(1)", "prob = double(1)"),
-        discrete = TRUE
-      )
-    ))
-
-    .nimble_cache$dBernoulliVector_registered <- TRUE
+.dpmirt_distribution_definitions <- function() {
+  ns <- asNamespace("DPMirt")
+  required <- c("dBernoulliVector", "rBernoulliVector")
+  missing <- required[!vapply(required, exists, logical(1),
+                              envir = ns, inherits = FALSE)]
+  if (length(missing)) {
+    stop("DPMirt custom distribution binding(s) missing from the namespace: ",
+         paste(missing, collapse = ", "), call. = FALSE)
   }
+  stats::setNames(lapply(required, get, envir = ns, inherits = FALSE),
+                  required)
+}
+
+.dpmirt_distribution_env <- function(create = TRUE) {
+  env_name <- .dpmirt_distribution_env_name()
+  owner_name <- .dpmirt_distribution_owner_binding()
+  ns <- asNamespace("DPMirt")
+  positions <- which(search() == env_name)
+
+  if (length(positions) > 1L) {
+    stop("DPMirt custom distribution environment name appears more than once ",
+         "on the search path: ", env_name, call. = FALSE)
+  }
+  if (!length(positions)) {
+    if (!isTRUE(create)) return(NULL)
+    payload <- list()
+    payload[[owner_name]] <- ns
+    attach(payload, pos = 2L, name = env_name, warn.conflicts = FALSE)
+  }
+
+  env <- as.environment(env_name)
+  owned <- exists(owner_name, envir = env, inherits = FALSE) &&
+    identical(get(owner_name, envir = env, inherits = FALSE), ns)
+  if (!owned) {
+    stop("search-path collision: '", env_name,
+         "' is not the DPMirt-owned custom distribution environment.",
+         call. = FALSE)
+  }
+  env
+}
+
+.register_dBernoulliVector <- function() {
+  definitions <- .dpmirt_distribution_definitions()
+
+  # A hostile/stale global binding would be found later on the search path if
+  # the dedicated environment were detached or damaged. Refuse non-identical
+  # globals explicitly; never overwrite or remove caller-owned objects.
+  for (nm in names(definitions)) {
+    if (exists(nm, envir = globalenv(), inherits = FALSE) &&
+        !identical(get(nm, envir = globalenv(), inherits = FALSE),
+                   definitions[[nm]])) {
+      stop("global custom distribution binding collision: ", nm,
+           " differs from the DPMirt namespace definition.",
+           call. = FALSE)
+    }
+  }
+
+  env <- .dpmirt_distribution_env(create = TRUE)
+
+  # Verify exact identity every time. Missing bindings are safe to repair in
+  # the authenticated package-owned environment; altered bindings are an
+  # ambiguous collision and must never be silently overwritten.
+  for (nm in names(definitions)) {
+    if (!exists(nm, envir = env, inherits = FALSE)) {
+      assign(nm, definitions[[nm]], envir = env)
+    } else if (!identical(get(nm, envir = env, inherits = FALSE),
+                          definitions[[nm]])) {
+      stop("custom distribution binding collision in '",
+           .dpmirt_distribution_env_name(), "': ", nm,
+           " does not match the DPMirt namespace definition.",
+           call. = FALSE)
+    }
+  }
+
+  # Re-register on every call. This repairs NIMBLE registry deletion or drift
+  # instead of trusting a stale package-cache boolean.
+  registerDistributions(list(
+    dBernoulliVector = list(
+      BUGSdist = "dBernoulliVector(prob)",
+      types    = c("value = double(1)", "prob = double(1)"),
+      discrete = TRUE
+    )
+  ), userEnv = env, verbose = FALSE)
+
+  # Cache mirrors are informational/backward-compatible only; correctness never
+  # branches on them.
+  .nimble_cache$dBernoulliVector <- definitions$dBernoulliVector
+  .nimble_cache$rBernoulliVector <- definitions$rBernoulliVector
+  .nimble_cache$dBernoulliVector_registered <- TRUE
+  .nimble_cache$dBernoulliVector_env <- env
+  invisible(env)
+}
+
+.detach_dpmirt_distribution_env <- function(deregister = TRUE) {
+  env <- .dpmirt_distribution_env(create = FALSE)
+  if (is.null(env)) return(invisible(FALSE))
+  if (isTRUE(deregister) && requireNamespace("nimble", quietly = TRUE)) {
+    try(nimble::deregisterDistributions(
+      "dBernoulliVector", userEnv = env, warn = FALSE
+    ), silent = TRUE)
+  }
+  detach(.dpmirt_distribution_env_name(), character.only = TRUE)
+  .nimble_cache$dBernoulliVector_registered <- NULL
+  .nimble_cache$dBernoulliVector_env <- NULL
   invisible(TRUE)
 }
 
@@ -238,6 +352,13 @@
           timesAccepted <<- 0
           timesAdapted  <<- 0
           gamma1        <<- 0
+          # W-03 (V3 contract): centering_mean is mutable run-time state
+          # (updated via set_mean each iteration); without restoring it,
+          # chain k > 1 on a reused compiled object starts from chain k-1's
+          # final centering mean while a fresh compile starts from 0 —
+          # breaking bit-equivalence between nchains > 1 and matched-seed
+          # single-chain runs for every model using this sampler (2PL/SI).
+          centering_mean <<- 0
         }
       )
     )

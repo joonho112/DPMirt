@@ -124,15 +124,15 @@ estimates and DPM cluster diagnostics:
 fit_rasch_n
 #> DPMirt Model Fit
 #> ================
-#> Model:            RASCH
-#> Prior:            normal
-#> Identification:   constrained_item
-#> Persons (N):      200
-#> Items (I):        25
+#> Model:            RASCH 
+#> Prior:            normal 
+#> Identification:   constrained_item 
+#> Persons (N):      200 
+#> Items (I):        25 
 #> MCMC:            10000 iterations (2000 burnin, thin=32)
-#> WAIC:             6079.03
-#> Total time:       55.4 sec
-#> Min ESS (items):  160
+#> WAIC:             6079.03 
+#> Total time:       55.4 sec 
+#> Min ESS (items):  160 
 #> Min ESS (theta):  66
 ```
 
@@ -141,28 +141,28 @@ fit_rasch_n
 summary(fit_rasch_dpm)
 #> DPMirt Model Summary
 #> ====================
-#>
+#> 
 #> Model Configuration:
-#>   Model:            RASCH
-#>   Prior:            dpm
-#>   Identification:   constrained_item
-#>   Rescaled:         TRUE
-#>
+#>   Model:            RASCH 
+#>   Prior:            dpm 
+#>   Identification:   constrained_item 
+#>   Rescaled:         TRUE 
+#> 
 #> Data:
-#>   Persons (N): 200
-#>   Items (I):   25
-#>
+#>   Persons (N): 200 
+#>   Items (I):   25 
+#> 
 #> MCMC Settings:
-#>   Iterations:  10000
-#>   Burn-in:     2000
-#>   Thinning:    32
-#>   Chains:      1
-#>
+#>   Iterations:  10000 
+#>   Burn-in:     2000 
+#>   Thinning:    32 
+#>   Chains:      1 
+#> 
 #> Timing:
-#>   Compilation:  21.3 sec
-#>   Sampling:     37.0 sec
-#>   Total:        1.5 min
-#>
+#>   Compilation:  21.3 sec 
+#>   Sampling:     37.0 sec 
+#>   Total:        1.5 min 
+#> 
 #> Item Difficulty (beta) Summary:
 #>            Mean    SD
 #> beta[1]   0.131 0.144
@@ -190,22 +190,22 @@ summary(fit_rasch_dpm)
 #> beta[23]  0.694 0.163
 #> beta[24] -0.169 0.141
 #> beta[25] -1.366 0.181
-#>
+#> 
 #> Person Ability (theta) Summary:
 #>   Range: [ -2.121 ,  1.732 ]
-#>   Mean:   -0.076
-#>   SD:     0.815
-#>
+#>   Mean:   -0.076 
+#>   SD:     0.815 
+#> 
 #> Model Comparison:
-#>   WAIC:  6078.17
-#>
+#>   WAIC:  6078.17 
+#> 
 #> DPM Diagnostics:
 #>   Alpha (concentration):
-#>     Posterior mean:  0.247
+#>     Posterior mean:  0.247 
 #>     95% CI: [ 0.009 ,  0.959 ]
 #>   Number of clusters:
-#>     Posterior mean:  2.3
-#>     Mode:           1
+#>     Posterior mean:  2.3 
+#>     Mode:           1 
 #>     Range: [ 1 ,  9 ]
 #>   DP density:    computed (500 grid points)
 ```
@@ -358,6 +358,8 @@ methods.
 ``` r
 
 est <- dpmirt_estimates(fit_rasch_dpm, methods = c("pm", "cb", "gr"))
+#> Warning: dpmirt_estimates(): CB/GR rank tie-breaking consumes RNG; pass 'seed'
+#> for bit-reproducible estimates. (Shown once per session.)
 head(est$theta, 8)
 #>           theta_pm theta_psd    theta_cb    theta_gr    rbar rhat theta_lower
 #> eta[1] -1.64285702 0.4766845 -1.82627181 -1.81331598  13.868    7 -2.54713745

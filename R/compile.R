@@ -75,10 +75,11 @@ dpmirt_compile <- function(spec,
   timer_start <- .start_timer()
 
   # --- Step 0: Register custom distributions if needed ---
+  nimble_user_env <- asNamespace("DPMirt")
   if (spec$config$identification == "constrained_item" &&
       spec$config$model %in% c("2pl", "3pl")) {
     .vmsg("Registering dBernoulliVector...", verbose = verbose)
-    .register_dBernoulliVector()
+    nimble_user_env <- .register_dBernoulliVector()
   }
 
   # --- Step 1: Build NIMBLE model ---
@@ -89,7 +90,8 @@ dpmirt_compile <- function(spec,
     constants = spec$constants,
     data      = spec$data,
     inits     = spec$inits,
-    name      = paste0("DPMirt_", spec$config$model, "_", spec$config$prior)
+    name      = paste0("DPMirt_", spec$config$model, "_", spec$config$prior),
+    userEnv   = nimble_user_env
   )
 
   .vmsg("  Model built successfully.", verbose = verbose)

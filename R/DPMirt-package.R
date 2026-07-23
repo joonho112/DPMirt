@@ -159,6 +159,13 @@
   invisible()
 }
 
+.onUnload <- function(libpath) {
+  # Remove only the attached environment authenticated as belonging to this
+  # namespace. A same-name foreign environment is intentionally left alone.
+  try(.detach_dpmirt_distribution_env(deregister = TRUE), silent = TRUE)
+  invisible()
+}
+
 .onAttach <- function(libname, pkgname) {
   ver <- utils::packageVersion("DPMirt")
   packageStartupMessage(

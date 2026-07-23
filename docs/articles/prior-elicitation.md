@@ -119,7 +119,7 @@ returns a named vector `c(a = ..., b = ...)`:
 ab <- dpmirt_alpha_prior(N = 200, mu_K = 5, confidence = "medium")
 #> Alpha prior: Gamma(1.85, 2.21) [E[alpha]=0.84]
 ab
-#>        a        b
+#>        a        b 
 #> 1.848904 2.212652
 ```
 
@@ -189,22 +189,22 @@ fit_prior <- DPprior_fit(J = 200, mu_K = 5, confidence = "medium")
 #>   See ?DPprior_diagnostics for interpretation.
 print(fit_prior)
 #> DPprior Prior Elicitation Result
-#> =============================================
-#>
+#> ============================================= 
+#> 
 #> Gamma Hyperprior: α ~ Gamma(a = 1.8489, b = 2.2127)
 #>   E[α] = 0.836, SD[α] = 0.615
-#>
+#> 
 #> Target (J = 200):
 #>   E[K_J]   = 5.00
 #>   Var(K_J) = 10.00
 #>   (from confidence = 'medium')
-#>
+#> 
 #> Achieved:
 #>   E[K_J] = 5.000000, Var(K_J) = 10.000000
 #>   Residual = 6.79e-11
-#>
+#> 
 #> Method: A2-MN (6 iterations)
-#>
+#> 
 #> Dominance Risk: HIGH ✘ (P(w₁>0.5) = 60%)
 ```
 
@@ -235,22 +235,22 @@ fit_prior <- dpmirt_alpha_prior(N = 200, mu_K = 5, confidence = "medium",
 # Inspect the result
 print(fit_prior)
 #> DPprior Prior Elicitation Result
-#> =============================================
-#>
+#> ============================================= 
+#> 
 #> Gamma Hyperprior: α ~ Gamma(a = 1.8489, b = 2.2127)
 #>   E[α] = 0.836, SD[α] = 0.615
-#>
+#> 
 #> Target (J = 200):
 #>   E[K_J]   = 5.00
 #>   Var(K_J) = 10.00
 #>   (from confidence = 'medium')
-#>
+#> 
 #> Achieved:
 #>   E[K_J] = 5.000000, Var(K_J) = 10.000000
 #>   Residual = 6.79e-11
-#>
+#> 
 #> Method: A2-MN (6 iterations)
-#>
+#> 
 #> Dominance Risk: HIGH ✘ (P(w₁>0.5) = 60%)
 
 # Pass directly to dpmirt (DPprior_fit objects are accepted)
@@ -303,7 +303,6 @@ knitr::kable(conf_table,
 | high       | 4.944 | 6.087 |  0.812  |  0.450   |   6   |
 
 Confidence levels and their implied hyperparameters (N = 200, mu_K = 5).
-{.table}
 
 > **Interpretation:** Higher confidence concentrates the Gamma prior
 > (lower CV), constraining $`\alpha`$ and thereby the cluster count. Low
@@ -499,7 +498,6 @@ knitr::kable(cluster_summary,
 | Informative Gamma(3,1) |    10    |  9.9   |      2.395      | 4011.5 |
 
 Sensitivity analysis: cluster counts and WAIC under three alpha priors.
-{.table}
 
 > **Takeaway:** When data are moderately informative (say,
 > $`\bar{w} \ge 0.7`$ and $`N \ge 100`$), the posterior distributions of
@@ -540,7 +538,7 @@ if (!has_dpprior) {
 }
 #> With DPprior installed, the package uses principled elicitation.
 #> Without DPprior, it returns c(a = 1, b = 3) with a message:
-#>
+#> 
 #>   "DPprior not installed. Using default: Gamma(1, 3)
 #>    [Paganin et al., 2023].
 #>    Install DPprior for principled alpha elicitation:
